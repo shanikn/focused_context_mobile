@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.db
+.env
+chroma_db/
+.pytest_cache/
+CLAUDE.md
+.vscode/
+.claude/
+focusedcontext-firebase-adminsdk-fbsvc-210a5ad44b.json
+firebase-credentials.json
+htmlcov/

@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pymongo[srv]
+sentence-transformers
+chromadb
+python-dotenv
+pytest
+flake8
+requests
+firebase-admin
