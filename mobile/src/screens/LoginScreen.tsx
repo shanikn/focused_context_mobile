@@ -13,30 +13,12 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
 } from "firebase/auth";
-import { useAuth } from "../context/AuthContext";
 
 export default function LoginScreen() {
-  const { user, loading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#2E7D32" />
-      </View>
-    );
-  }
-
-  if (user) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.welcome}>Welcome, {user.email}</Text>
-      </View>
-    );
-  }
 
   const handleSubmit = async () => {
     if (!email || !password) {
@@ -125,10 +107,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#666",
     marginBottom: 32,
-  },
-  welcome: {
-    fontSize: 20,
-    color: "#333",
   },
   input: {
     width: "100%",
