@@ -1,6 +1,6 @@
 // defines how a note looks like
 
-
+//  like note_to_dict
 export interface Note {
     _id: string;                                               
     content: string;                                           
