@@ -1,9 +1,11 @@
-import { Text, View } from 'react-native';
+import React from "react";
+import AuthProvider from "./src/context/AuthContext";
+import LoginScreen from "./src/screens/LoginScreen";
 
 export default function App() {
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Text>Hello Shani 😎</Text>
-    </View>
+    <AuthProvider>
+      <LoginScreen />
+    </AuthProvider>
   );
 }
