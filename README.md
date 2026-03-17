@@ -1,16 +1,16 @@
-# ContextMind — Mobile
+# FocusedContext — Mobile
 
-Most note-taking apps are graveyards for ideas. ContextMind brings your notes back to life —
+Most note-taking apps are graveyards for ideas. FocusedContext brings your notes back to life —
 resurfacing them exactly when and where you need them, as a native mobile app.
 
-This is the React Native (Expo) version of ContextMind. The backend is identical to the web
+This is the React Native (Expo) version of FocusedContext. The backend is identical to the web
 version with minor cleanup. Only the frontend and notification delivery have changed.
 
 **Web version:** https://github.com/shanikn/contextmind
 
 ## Overview
 
-ContextMind is a context-aware reminder system that uses semantic search and environmental
+FocusedContext is a context-aware reminder system that uses semantic search and environmental
 context to bridge the gap between "noting" and "doing." Write "buy milk" and it appears when
 you're near a store. Write "study for exam" and it surfaces when you're at university.
 
