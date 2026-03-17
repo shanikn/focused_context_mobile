@@ -1,5 +1,3 @@
-import os
-import json
 import logging
 from typing import Optional
 from dotenv import load_dotenv
@@ -9,9 +7,6 @@ load_dotenv()
 from pydantic import BaseModel  # noqa: E402
 from fastapi import FastAPI, Header  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.staticfiles import StaticFiles  # noqa: E402
-from fastapi.responses import RedirectResponse  # noqa: E402
-from pywebpush import webpush, WebPushException  # noqa: E402
 from notepad import (  # noqa: E402
     Note, get_all_notes, update_note, note_to_dict,
     get_note_by_id, dict_to_note
@@ -23,13 +18,6 @@ from agents.pipeline import (  # noqa: E402
 )
 from agents.categorizer import categorize, infer_location, infer_time  # noqa: E402
 from auth import get_user_id  # noqa: E402
-
-pending_notifications = []
-push_subscriptions = []  # in-memory store for Web Push subscriptions
-
-VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
-VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
-VAPID_CONTACT = os.getenv("VAPID_CONTACT", "mailto:admin@example.com")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,9 +41,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
-
-
 @app.on_event("startup")
 def startup():
     logging.info("Re-ingesting all notes into ChromaDB...")
@@ -65,7 +50,7 @@ def startup():
 
 @app.get("/")
 def root():
-    return RedirectResponse(url="/frontend/index.html")
+    return {"status": "ok"}
 
 
 # save note, ingest it, and categorize it
@@ -152,7 +137,8 @@ def change_note(
 @app.get("/reminders/")
 def get_reminders_endpoint(
     location: str = "unknown", hour: Optional[int] = None,
-    minute: Optional[int] = None
+    minute: Optional[int] = None,
+    authorization: Optional[str] = Header(None),
 ):
     query = f"{location} {hour}" if hour is not None else location
     notes = get_reminders(query, location, hour)
@@ -176,70 +162,3 @@ def feedback(
     return {"message": f"feedback '{action}' applied"}
 
 
-class NotifyRequest(BaseModel):
-    content: str
-    note_id: str
-
-
-@app.post("/notify")
-def push_notification(request: NotifyRequest):
-    pending_notifications.append({
-        "content": request.content,
-        "note_id": request.note_id
-    })
-    # keep max 20 items
-    while len(pending_notifications) > 20:
-        pending_notifications.pop(0)
-    return {"ok": True}
-
-
-@app.get("/notify")
-def poll_notifications():
-    items = list(pending_notifications)
-    pending_notifications.clear()
-    return items
-
-
-# ── WEB PUSH ──
-@app.get("/vapid-public-key")
-def get_vapid_key():
-    return {"publicKey": VAPID_PUBLIC_KEY}
-
-
-@app.post("/push-subscribe")
-def push_subscribe(subscription: dict):
-    # deduplicate by endpoint
-    for sub in push_subscriptions:
-        if sub.get("endpoint") == subscription.get("endpoint"):
-            return {"ok": True}
-    push_subscriptions.append(subscription)
-    logging.info("Push subscription added (%d total)", len(push_subscriptions))
-    return {"ok": True}
-
-
-@app.post("/push-notify")
-def push_notify_all(request: NotifyRequest):
-    """Send a Web Push notification to all subscriptions."""
-    if not VAPID_PRIVATE_KEY:
-        return {"error": "VAPID keys not configured"}
-    payload = json.dumps({
-        "title": "FocusedContext",
-        "body": request.content,
-        "tag": "fc-" + request.note_id,
-    })
-    failed = []
-    for sub in list(push_subscriptions):
-        try:
-            webpush(
-                subscription_info=sub,
-                data=payload,
-                vapid_private_key=VAPID_PRIVATE_KEY,
-                vapid_claims={"sub": VAPID_CONTACT},
-            )
-        except WebPushException as e:
-            logging.warning("Push failed: %s", e)
-            if "410" in str(e) or "404" in str(e):
-                failed.append(sub)
-    for sub in failed:
-        push_subscriptions.remove(sub)
-    return {"sent": len(push_subscriptions), "removed": len(failed)}
