@@ -87,20 +87,31 @@ def save_note(note: Note):
 
 
 def get_all_notes(user_id: Optional[str] = None) -> list[dict]:
-    query = {"user_id": user_id} if user_id else {}
+    query = {"user_id": user_id} if user_id is not None else {}
     return list(notes_collection.find(query))
 
 
-def update_note(note_id: str, fields: dict):
-    notes_collection.update_one({"_id": note_id}, {"$set": fields})
+def update_note(note_id: str, fields: dict, user_id: Optional[str] = None) -> int:
+    query = {"_id": note_id}
+    if user_id is not None:
+        query["user_id"] = user_id
+    result = notes_collection.update_one(query, {"$set": fields})
+    return result.matched_count
 
 
-def delete_note(note_id: str):
-    notes_collection.delete_one({"_id": note_id})
+def delete_note(note_id: str, user_id: Optional[str] = None) -> int:
+    query = {"_id": note_id}
+    if user_id is not None:
+        query["user_id"] = user_id
+    result = notes_collection.delete_one(query)
+    return result.deleted_count
 
 
-def get_note_by_id(note_id: str):
-    return notes_collection.find_one({"_id": note_id})
+def get_note_by_id(note_id: str, user_id: Optional[str] = None):
+    query = {"_id": note_id}
+    if user_id is not None:
+        query["user_id"] = user_id
+    return notes_collection.find_one(query)
 
 
 if __name__ == "__main__":

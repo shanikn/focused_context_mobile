@@ -45,9 +45,13 @@ def process_new_notes(note: Note):
 
 
 def get_reminders(
-    query: str, location: str = "unknown", hour: Optional[int] = None
+    query: str,
+    location: str = "unknown",
+    hour: Optional[int] = None,
+    minute: Optional[int] = None,
+    user_id: Optional[str] = None,
 ):
-    return get_relevant_notes(query, location, hour)
+    return get_relevant_notes(query, location, hour, minute, user_id)
 
 
 def process_feedback(note: Note, action: str):
@@ -60,12 +64,12 @@ def process_feedback(note: Note, action: str):
     })
 
 
-def full_delete(note_id: str):
+def full_delete(note_id: str, user_id: Optional[str] = None) -> bool:
     try:
         collection.delete(ids=[note_id])
     except Exception:
         pass
-    delete_note(note_id)
+    return delete_note(note_id, user_id=user_id) > 0
 
 
 def reingest_note(note: Note):

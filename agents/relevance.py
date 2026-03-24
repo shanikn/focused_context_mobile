@@ -61,7 +61,7 @@ def _context_bonus(note, location_bucket, current_hour, current_minute):
 # return top 3 notes via direct location match or semantic search fallback
 def get_relevant_notes(
     query: str, location: str = "unknown", hour: Optional[int] = None,
-    minute: Optional[int] = None
+    minute: Optional[int] = None, user_id: Optional[str] = None
 ):
     now = datetime.now()
     current_hour = hour if hour is not None else now.hour
@@ -70,7 +70,7 @@ def get_relevant_notes(
 
     # when a specific location is selected, use direct MongoDB lookup
     if location_bucket != "unknown":
-        all_docs = get_all_notes()
+        all_docs = get_all_notes(user_id=user_id)
         candidates = [
             dict_to_note(d) for d in all_docs
             if location_bucket in d.get("contexts", [])
@@ -104,7 +104,7 @@ def get_relevant_notes(
     for note_id, distance in zip(results["ids"][0], results["distances"][0]):
         if distance > 1.8:
             continue
-        doc = get_note_by_id(note_id)
+        doc = get_note_by_id(note_id, user_id=user_id)
         if doc is not None:
             notes.append(dict_to_note(doc))
 
@@ -122,7 +122,7 @@ def get_relevant_notes(
 
 def get_context_reminders(
     location: str = "unknown", hour: Optional[int] = None,
-    minute: Optional[int] = None
+    minute: Optional[int] = None, user_id: Optional[str] = None
 ):
     """Surface notes based purely on context match — no semantic search."""
     now = datetime.now()
@@ -130,7 +130,7 @@ def get_context_reminders(
     current_minute = minute if minute is not None else now.minute
     location_bucket = get_location_bucket(location)
 
-    all_docs = get_all_notes()
+    all_docs = get_all_notes(user_id=user_id)
     notes = [dict_to_note(d) for d in all_docs]
     filtered = [
         n for n in notes

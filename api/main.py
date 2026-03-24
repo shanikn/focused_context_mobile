@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from pydantic import BaseModel  # noqa: E402
-from fastapi import FastAPI, Header  # noqa: E402
+from fastapi import FastAPI, Header, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from notepad import (  # noqa: E402
     Note, get_all_notes, update_note, note_to_dict,
@@ -54,13 +54,20 @@ def root():
     return {"status": "ok"}
 
 
+def require_user_id(authorization: Optional[str]) -> str:
+    user_id = get_user_id(authorization)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user_id
+
+
 # save note, ingest it, and categorize it
 @app.post("/notes/")
 def create_note(
     request: NoteRequest,
     authorization: Optional[str] = Header(None),
 ):
-    user_id = get_user_id(authorization)
+    user_id = require_user_id(authorization)
     note = Note(
         content=request.content,
         list_name=request.list_name,
@@ -76,7 +83,7 @@ def create_note(
 # get all notes
 @app.get("/notes/")
 def list_notes(authorization: Optional[str] = Header(None)):
-    user_id = get_user_id(authorization)
+    user_id = require_user_id(authorization)
     return get_all_notes(user_id=user_id)
 
 
@@ -86,7 +93,10 @@ def remove_note(
     note_id: str,
     authorization: Optional[str] = Header(None),
 ):
-    full_delete(note_id)
+    user_id = require_user_id(authorization)
+    deleted = full_delete(note_id, user_id=user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Note not found")
     logging.info("Note deleted: %s", note_id)
     return {"message": "note deleted"}
 
@@ -101,6 +111,7 @@ def change_note(
     remind_on_date: Optional[str] = None,
     authorization: Optional[str] = Header(None),
 ):
+    user_id = require_user_id(authorization)
     fields = {}
     if content is not None:
         fields["content"] = content
@@ -110,10 +121,12 @@ def change_note(
         fields["contexts"] = [c.strip() for c in contexts.split(",") if c.strip()]
     if remind_on_date is not None:
         fields["remind_on_date"] = remind_on_date if remind_on_date else None
-    update_note(note_id, fields)
+    matched = update_note(note_id, fields, user_id=user_id)
+    if matched == 0:
+        raise HTTPException(status_code=404, detail="Note not found")
     # re-categorize, re-infer context, and re-embed when content changes
     if content is not None:
-        doc = get_note_by_id(note_id)
+        doc = get_note_by_id(note_id, user_id=user_id)
         if doc:
             note = dict_to_note(doc)
             new_cat = categorize(content)
@@ -127,7 +140,7 @@ def change_note(
             update_note(note_id, {
                 "category": new_cat,
                 "contexts": new_contexts,
-            })
+            }, user_id=user_id)
             note.category = new_cat
             note.contexts = new_contexts
             ingest_note(note)
@@ -141,8 +154,9 @@ def get_reminders_endpoint(
     minute: Optional[int] = None,
     authorization: Optional[str] = Header(None),
 ):
+    user_id = require_user_id(authorization)
     query = f"{location} {hour}" if hour is not None else location
-    notes = get_reminders(query, location, hour)
+    notes = get_reminders(query, location, hour, minute, user_id)
     return [note_to_dict(n) for n in notes]
 
 
@@ -153,10 +167,11 @@ def feedback(
     action: str,
     authorization: Optional[str] = Header(None),
 ):
+    user_id = require_user_id(authorization)
     from notepad import get_note_by_id, dict_to_note
-    doc = get_note_by_id(note_id)
+    doc = get_note_by_id(note_id, user_id=user_id)
     if doc is None:
-        return {"error": "note not found"}
+        raise HTTPException(status_code=404, detail="Note not found")
     note = dict_to_note(doc)
     process_feedback(note, action)
     logging.info("Feedback '%s' on note %s", action, note_id)
