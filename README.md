@@ -49,3 +49,21 @@ local notifications (via expo-notifications) instead of Web Push.
 | Testing | pytest (63+ tests, 93% coverage) |
 | Linting | flake8 (pre-commit hook on every commit) |
 
+## Running Locally On Your Phone
+
+The mobile app can target either the deployed Azure API or a backend running on your own machine.
+By default it uses Azure. To use a local backend instead:
+
+1. In `mobile/`, create a `.env` file.
+2. Set `EXPO_PUBLIC_API_BASE_URL=http://YOUR_COMPUTER_LAN_IP:8000`
+3. Start the backend so it listens on your network:
+   `uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload`
+4. Start Expo from `mobile/`:
+   `npm start`
+5. Open the app on your phone through Expo Go while the phone and computer are on the same Wi-Fi.
+
+Notes:
+- Use your computer's LAN IP, not `localhost`.
+- Example: `http://192.168.1.100:8000`
+- If Windows Firewall prompts for access, allow it for private networks.
+- The backend still needs its normal env/config for MongoDB and Firebase auth.

@@ -32,7 +32,7 @@ def embed_text(text: str) -> list:
 def ingest_note(note: Note):
     text = note.content
     embed = embed_text(text)
-    collection.add(
+    collection.upsert(
         ids=[note.id],
         embeddings=[embed],
         metadatas=[{

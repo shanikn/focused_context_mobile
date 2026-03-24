@@ -1,4 +1,13 @@
-const BASE_URL = "https://contextmind-api-hngzd9ewbzg5cxhm.israelcentral-01.azurewebsites.net";
+const DEFAULT_BASE_URL =
+  "https://contextmind-api-hngzd9ewbzg5cxhm.israelcentral-01.azurewebsites.net";
+
+function normalizeBaseUrl(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+const BASE_URL = normalizeBaseUrl(
+  process.env.EXPO_PUBLIC_API_BASE_URL || DEFAULT_BASE_URL
+);
 
 let authToken: string | null = null;
 

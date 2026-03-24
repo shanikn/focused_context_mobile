@@ -12,6 +12,11 @@ logger = logging.getLogger(__name__)
 # try file path first, then env var with JSON string
 cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
 cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
+dev_auth_bypass = os.getenv("DEV_AUTH_BYPASS", "").lower() in {
+    "1", "true", "yes", "on"
+}
+dev_auth_user_id = os.getenv("DEV_AUTH_USER_ID", "local-dev-user")
+_dev_auth_logged = False
 
 if cred_path and os.path.exists(cred_path):
     cred = credentials.Certificate(cred_path)
@@ -30,6 +35,15 @@ else:
 
 def get_user_id(authorization_header: Optional[str]) -> Optional[str]:
     """Verify a Firebase ID token from a Bearer header, return uid."""
+    global _dev_auth_logged
+    if dev_auth_bypass:
+        if not _dev_auth_logged:
+            logger.info(
+                "DEV_AUTH_BYPASS enabled; using local user '%s'",
+                dev_auth_user_id
+            )
+            _dev_auth_logged = True
+        return dev_auth_user_id
     if not authorization_header:
         return None
     if not authorization_header.startswith("Bearer "):

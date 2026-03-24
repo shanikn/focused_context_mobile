@@ -37,6 +37,11 @@ def _minutes_diff(time_str, current_hour, current_minute):
 ALL_LOCATIONS = {"home", "uni", "work", "errands"}
 
 
+def _is_due_today(note, today_str):
+    """Notes with no date are always eligible; dated notes only surface on that date."""
+    return note.remind_on_date is None or note.remind_on_date == today_str
+
+
 def _has_conflicting_location(note, location_bucket):
     """True if note has a different location than requested."""
     if location_bucket == "unknown":
@@ -64,6 +69,7 @@ def get_relevant_notes(
     minute: Optional[int] = None, user_id: Optional[str] = None
 ):
     now = datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
     current_hour = hour if hour is not None else now.hour
     current_minute = minute if minute is not None else now.minute
     location_bucket = get_location_bucket(location)
@@ -76,7 +82,10 @@ def get_relevant_notes(
             if location_bucket in d.get("contexts", [])
             and not d.get("never_show", False)
         ]
-        candidates = [n for n in candidates if not is_on_cooldown(n)]
+        candidates = [
+            n for n in candidates
+            if not is_on_cooldown(n) and _is_due_today(n, today_str)
+        ]
         if candidates:
             ranked = sorted(
                 candidates,
@@ -110,7 +119,9 @@ def get_relevant_notes(
 
     filtered = [
         x for x in notes
-        if not x.never_show and not is_on_cooldown(x)
+        if not x.never_show
+        and not is_on_cooldown(x)
+        and _is_due_today(x, today_str)
     ]
     ranked = sorted(
         filtered,
@@ -126,6 +137,7 @@ def get_context_reminders(
 ):
     """Surface notes based purely on context match — no semantic search."""
     now = datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
     current_hour = hour if hour is not None else now.hour
     current_minute = minute if minute is not None else now.minute
     location_bucket = get_location_bucket(location)
@@ -136,6 +148,7 @@ def get_context_reminders(
         n for n in notes
         if not n.never_show
         and not is_on_cooldown(n)
+        and _is_due_today(n, today_str)
         and not _has_conflicting_location(n, location_bucket)
     ]
 
