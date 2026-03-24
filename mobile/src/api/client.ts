@@ -25,7 +25,9 @@ export async function apiRequest(
   });
 
   if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
+    const body = await response.text();
+    console.error(`API error ${response.status}: ${body}`);
+    throw new Error(`API error ${response.status}: ${body}`);
   }
 
   return response.json();

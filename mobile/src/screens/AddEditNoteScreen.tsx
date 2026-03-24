@@ -1,17 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useLayoutEffect, useCallback } from "react";
 import {
   View,
   TextInput,
   TouchableOpacity,
+  ScrollView,
   Text,
   StyleSheet,
   Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
-import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
-import { createNote, updateNote } from "../api/notes";
+import { useNavigation, useRoute, useFocusEffect, RouteProp } from "@react-navigation/native";
+import { createNote, updateNote, getNotes } from "../api/notes";
 import { NotesStackParamList } from "../../App";
 
 type RouteParams = RouteProp<NotesStackParamList, "AddEditNote">;
@@ -23,7 +21,20 @@ export default function AddEditNoteScreen() {
   const isEditing = !!route.params?.noteId;
   const [content, setContent] = useState(route.params?.noteContent || "");
   const [listName, setListName] = useState(route.params?.noteListName || "General");
+  const [existingLists, setExistingLists] = useState<string[]>([]);
+  const [showNewListInput, setShowNewListInput] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      getNotes()
+        .then((notes) => {
+          const names = [...new Set(notes.map((n) => n.list_name || "General"))].sort();
+          setExistingLists(names);
+        })
+        .catch(() => {});
+    }, [])
+  );
 
   const handleSave = async () => {
     const trimmed = content.trim();
@@ -41,48 +52,81 @@ export default function AddEditNoteScreen() {
       }
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert("Error", "Failed to save note");
+      Alert.alert("Error", err.message || "Failed to save note");
     } finally {
       setSaving(false);
     }
   };
 
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity onPress={handleSave} disabled={saving}>
+          <Text style={styles.headerSave}>
+            {saving ? "Saving..." : isEditing ? "Update" : "Save"}
+          </Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, content, listName, saving]);
+
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <View style={styles.container}>
+      {!isEditing && (
+        <View style={styles.listSection}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.listPills}
+          >
+            {existingLists.map((name) => (
+              <TouchableOpacity
+                key={name}
+                style={[styles.pill, listName === name && styles.pillActive]}
+                onPress={() => {
+                  setListName(name);
+                  setShowNewListInput(false);
+                }}
+              >
+                <Text style={[styles.pillText, listName === name && styles.pillTextActive]}>
+                  {name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={[styles.pill, styles.pillNew, showNewListInput && styles.pillActive]}
+              onPress={() => {
+                setShowNewListInput(true);
+                setListName("");
+              }}
+            >
+              <Text style={[styles.pillText, showNewListInput && styles.pillTextActive]}>
+                + New List
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+          {showNewListInput && (
+            <TextInput
+              style={styles.newListInput}
+              placeholder="New list name"
+              value={listName}
+              onChangeText={setListName}
+              autoFocus
+            />
+          )}
+        </View>
+      )}
+
       <TextInput
-        style={styles.contentInput}
+        style={styles.input}
         placeholder="What's on your mind?"
         value={content}
         onChangeText={setContent}
         multiline
-        autoFocus
+        autoFocus={!showNewListInput}
         textAlignVertical="top"
       />
-
-      <TextInput
-        style={styles.listInput}
-        placeholder="List name (e.g. Groceries, Work)"
-        value={listName}
-        onChangeText={setListName}
-      />
-
-      <TouchableOpacity
-        style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-        onPress={handleSave}
-        disabled={saving}
-      >
-        {saving ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.saveButtonText}>
-            {isEditing ? "Update" : "Save"}
-          </Text>
-        )}
-      </TouchableOpacity>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -90,41 +134,61 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",
-    padding: 16,
   },
-  contentInput: {
+  listSection: {
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+    paddingVertical: 8,
+  },
+  listPills: {
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  pill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#f0f0f0",
+  },
+  pillActive: {
+    backgroundColor: "#2E7D32",
+  },
+  pillNew: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderStyle: "dashed",
+    backgroundColor: "transparent",
+  },
+  pillText: {
+    fontSize: 13,
+    color: "#666",
+  },
+  pillTextActive: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  newListInput: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    padding: 10,
+    backgroundColor: "#f9f9f9",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    fontSize: 14,
+  },
+  input: {
     flex: 1,
     backgroundColor: "#fff",
-    borderRadius: 10,
     padding: 16,
     fontSize: 16,
     lineHeight: 24,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    marginBottom: 12,
-    minHeight: 120,
   },
-  listInput: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    marginBottom: 16,
-  },
-  saveButton: {
-    backgroundColor: "#2E7D32",
-    borderRadius: 10,
-    padding: 16,
-    alignItems: "center",
-  },
-  saveButtonDisabled: {
-    opacity: 0.6,
-  },
-  saveButtonText: {
-    color: "#fff",
+  headerSave: {
+    color: "#2E7D32",
     fontSize: 16,
     fontWeight: "600",
+    marginRight: 4,
   },
 });

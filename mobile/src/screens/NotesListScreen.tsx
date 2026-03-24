@@ -1,7 +1,8 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
   FlatList,
+  ScrollView,
   Text,
   TouchableOpacity,
   StyleSheet,
@@ -23,6 +24,17 @@ export default function NotesListScreen() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState("All");
+
+  const listNames = useMemo(() => {
+    const names = [...new Set(notes.map((n) => n.list_name || "General"))];
+    return ["All", ...names.sort()];
+  }, [notes]);
+
+  const filteredNotes = useMemo(() => {
+    if (activeTab === "All") return notes;
+    return notes.filter((n) => (n.list_name || "General") === activeTab);
+  }, [notes, activeTab]);
 
   const fetchNotes = useCallback(async () => {
     try {
@@ -67,6 +79,51 @@ export default function NotesListScreen() {
 
   return (
     <View style={styles.container}>
+      {notes.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabBar}
+          contentContainerStyle={styles.tabBarContent}
+        >
+          {listNames.map((name) => (
+            <TouchableOpacity
+              key={name}
+              style={[styles.tab, activeTab === name && styles.tabActive]}
+              onPress={() => setActiveTab(name)}
+              onLongPress={() => {
+                if (name === "All" || name === "General") return;
+                const listNotes = notes.filter((n) => n.list_name === name);
+                Alert.alert(
+                  "Delete List",
+                  `Delete "${name}" and its ${listNotes.length} note(s)?`,
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Delete",
+                      style: "destructive",
+                      onPress: async () => {
+                        try {
+                          await Promise.all(listNotes.map((n) => deleteNote(n._id)));
+                          setNotes((prev) => prev.filter((n) => n.list_name !== name));
+                          setActiveTab("All");
+                        } catch {
+                          Alert.alert("Error", "Failed to delete list");
+                        }
+                      },
+                    },
+                  ]
+                );
+              }}
+            >
+              <Text style={[styles.tabText, activeTab === name && styles.tabTextActive]}>
+                {name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
       {notes.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="document-text-outline" size={64} color="#ccc" />
@@ -75,7 +132,7 @@ export default function NotesListScreen() {
         </View>
       ) : (
         <FlatList
-          data={notes}
+          data={filteredNotes}
           keyExtractor={(item) => item._id}
           renderItem={({ item }) => (
             <NoteCard
@@ -125,6 +182,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#bbb",
     marginTop: 4,
+  },
+  tabBar: {
+    flexGrow: 0,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  tabBarContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  tab: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#f0f0f0",
+  },
+  tabActive: {
+    backgroundColor: "#2E7D32",
+  },
+  tabText: {
+    fontSize: 14,
+    color: "#666",
+  },
+  tabTextActive: {
+    color: "#fff",
+    fontWeight: "600",
   },
   fab: {
     position: "absolute",
