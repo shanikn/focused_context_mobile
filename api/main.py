@@ -41,6 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.on_event("startup")
 def startup():
     logging.info("Re-ingesting all notes into ChromaDB...")
@@ -160,5 +161,3 @@ def feedback(
     process_feedback(note, action)
     logging.info("Feedback '%s' on note %s", action, note_id)
     return {"message": f"feedback '{action}' applied"}
-
-
