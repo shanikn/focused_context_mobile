@@ -6,5 +6,4 @@ chromadb
 python-dotenv
 pytest
 flake8
-requests
 firebase-admin
