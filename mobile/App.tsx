@@ -1,5 +1,5 @@
-import React from "react";
-import { ActivityIndicator, View } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { ActivityIndicator, AppState, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -11,6 +11,7 @@ import NotesListScreen from "./src/screens/NotesListScreen";
 import AddEditNoteScreen from "./src/screens/AddEditNoteScreen";
 import RemindersScreen from "./src/screens/RemindersScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
+import { checkAndNotifyReminders } from "./src/services/reminderNotifier";
 
 export type NotesStackParamList = {
   NotesList: undefined;
@@ -19,6 +20,7 @@ export type NotesStackParamList = {
 
 const Stack = createNativeStackNavigator<NotesStackParamList>();
 const Tab = createBottomTabNavigator();
+const REMINDER_POLL_MS = 60 * 1000;
 
 function NotesStack() {
   return (
@@ -67,6 +69,45 @@ function MainTabs() {
 
 function RootNavigator() {
   const { user, loading } = useAuth();
+  const isCheckingRef = useRef(false);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let mounted = true;
+
+    const runReminderCheck = async () => {
+      if (!mounted || isCheckingRef.current) {
+        return;
+      }
+
+      isCheckingRef.current = true;
+      try {
+        await checkAndNotifyReminders();
+      } catch (error) {
+        console.log("Reminder check failed", error);
+      } finally {
+        isCheckingRef.current = false;
+      }
+    };
+
+    runReminderCheck();
+
+    const interval = setInterval(runReminderCheck, REMINDER_POLL_MS);
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        runReminderCheck();
+      }
+    });
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+      appStateSubscription.remove();
+    };
+  }, [user]);
 
   if (loading) {
     return (

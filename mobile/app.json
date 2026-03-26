@@ -15,7 +15,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.shanini.mobile",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSUserNotificationUsageDescription": "FocusedContext uses notifications to remind you about notes at the right moment."
       }
     },
     "android": {
@@ -36,7 +37,8 @@
       }
     },
     "plugins": [
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-notifications"
     ]
   }
 }
