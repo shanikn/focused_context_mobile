@@ -1,7 +1,10 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from agents.ingestion import ingest_note
-from agents.categorizer import categorize, infer_location, infer_time, default_time_for
+from agents.categorizer import (
+    categorize, infer_location, infer_time,
+    infer_date, default_time_for,
+)
 from agents.relevance import get_relevant_notes, collection
 from agents.ranking_policy import apply_feedback
 from notepad import (
@@ -12,33 +15,91 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+def _parse_time_text(time_text: Optional[str]) -> Optional[tuple[int, int]]:
+    if not time_text or ":" not in time_text:
+        return None
+
+    hour_text, minute_text = time_text.split(":", 1)
+    try:
+        hour = int(hour_text)
+        minute = int(minute_text)
+    except ValueError:
+        return None
+
+    if 0 <= hour <= 23 and 0 <= minute <= 59:
+        return hour, minute
+    return None
+
+
+def _adjust_smart_date_for_future(
+    resolved_date: Optional[str],
+    time_text: Optional[str],
+    note: Note,
+    now: datetime,
+) -> Optional[str]:
+    if note.remind_date_explicit or note.remind_time_explicit:
+        return resolved_date
+
+    parsed_time = _parse_time_text(time_text)
+    if parsed_time is None:
+        return resolved_date
+
+    base_date = resolved_date or now.strftime("%Y-%m-%d")
+    try:
+        fmt = "%Y-%m-%d %H:%M"
+        scheduled = datetime.strptime(
+            f"{base_date} {time_text}", fmt
+        )
+    except ValueError:
+        return resolved_date
+
+    if scheduled <= now:
+        return (scheduled + timedelta(days=1)).strftime("%Y-%m-%d")
+    return resolved_date
+
+
 def process_new_notes(note: Note):
     logger.info("Processing note %s: %s", note.id, note.content[:30])
     save_note(note)
-    category = categorize(note.content)
+    enrich_note(note)
+
+
+def enrich_note(note: Note):
+    now = datetime.now()
+    if note.category_explicit:
+        category = note.category
+    else:
+        category = categorize(note.content)
     contexts = []
     location = infer_location(note.content, category)
     if location:
         contexts.append(location)
-    # use manual hour override if set, otherwise infer from content or fall back to location default
-    if note.remind_at_hour is not None:
-        time = f"{note.remind_at_hour:02d}:00"
+    # use manual hour override if set, otherwise infer
+    # from content or fall back to location default
+    if note.remind_time_explicit and note.remind_at_hour is not None:
+        minute = note.remind_at_minute or 0
+        time = f"{note.remind_at_hour:02d}:{minute:02d}"
     else:
         time = infer_time(note.content)
         if time is None:
             time = default_time_for(location)
     if time is not None:
         contexts.append(time)
-    # default remind_on_date to today so notes are only surfaced on the day they're created
-    if note.remind_on_date is None:
-        note.remind_on_date = datetime.now().strftime("%Y-%m-%d")
+    if note.remind_date_explicit and note.remind_on_date is not None:
+        resolved_date = note.remind_on_date
+    else:
+        resolved_date = infer_date(note.content, now)
+    resolved_date = _adjust_smart_date_for_future(
+        resolved_date, time, note, now
+    )
+    note.remind_on_date = resolved_date
     note.category = category
     note.contexts = contexts
     logger.info("Category: %s, contexts: %s", category, contexts)
     update_note(note.id, {
         "category": category,
         "contexts": contexts,
-        "remind_on_date": note.remind_on_date,
+        "remind_on_date": resolved_date,
     })
     # ingest after categorization so ChromaDB gets complete metadata
     ingest_note(note)
@@ -74,19 +135,41 @@ def full_delete(note_id: str, user_id: Optional[str] = None) -> bool:
 
 def reingest_note(note: Note):
     """Re-categorize and re-embed an existing note (no save to MongoDB)."""
-    category = categorize(note.content)
+    now = datetime.now()
+    if note.category_explicit:
+        category = note.category
+    else:
+        category = categorize(note.content)
     contexts = []
     location = infer_location(note.content, category)
     if location:
         contexts.append(location)
-    time = infer_time(note.content)
-    if time is None:
-        time = default_time_for(location)
+    if note.remind_time_explicit and note.remind_at_hour is not None:
+        minute = note.remind_at_minute or 0
+        time = f"{note.remind_at_hour:02d}:{minute:02d}"
+    else:
+        time = infer_time(note.content)
+        if time is None:
+            time = default_time_for(location)
     if time is not None:
         contexts.append(time)
+    if note.remind_date_explicit and note.remind_on_date is not None:
+        note.remind_on_date = note.remind_on_date
+    else:
+        note.remind_on_date = infer_date(note.content, now)
+    note.remind_on_date = _adjust_smart_date_for_future(
+        note.remind_on_date, time, note, now
+    )
     note.category = category
     note.contexts = contexts
-    update_note(note.id, {"category": category, "contexts": contexts})
+    update_note(
+        note.id,
+        {
+            "category": category,
+            "contexts": contexts,
+            "remind_on_date": note.remind_on_date,
+        }
+    )
     ingest_note(note)
 
 

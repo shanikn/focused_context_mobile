@@ -37,7 +37,11 @@ class Note:
     last_shown: Optional[datetime] = None
     cooldown_until: Optional[datetime] = None
     reminders_enabled: bool = True
+    category_explicit: bool = False
+    remind_date_explicit: bool = False
+    remind_time_explicit: bool = False
     remind_at_hour: Optional[int] = None  # manual override: force reminder at this hour (0-23)
+    remind_at_minute: Optional[int] = None  # manual override minute (0-59)
     remind_on_date: Optional[str] = None  # YYYY-MM-DD; set to today at save time if not provided
     user_id: Optional[str] = None
 
@@ -58,7 +62,11 @@ def note_to_dict(note: Note) -> dict:
         "last_shown": note.last_shown,  # when last resurfaced
         "cooldown_until": note.cooldown_until,  # Later=24h, Annoying=7d
         "reminders_enabled": note.reminders_enabled,
+        "category_explicit": note.category_explicit,
+        "remind_date_explicit": note.remind_date_explicit,
+        "remind_time_explicit": note.remind_time_explicit,
         "remind_at_hour": note.remind_at_hour,
+        "remind_at_minute": note.remind_at_minute,
         "remind_on_date": note.remind_on_date,
         "user_id": note.user_id,
     }
@@ -79,7 +87,11 @@ def dict_to_note(d: dict) -> Note:
         last_shown=d["last_shown"],
         cooldown_until=d["cooldown_until"],
         reminders_enabled=d.get("reminders_enabled", True),
+        category_explicit=d.get("category_explicit", False),
+        remind_date_explicit=d.get("remind_date_explicit", False),
+        remind_time_explicit=d.get("remind_time_explicit", False),
         remind_at_hour=d.get("remind_at_hour"),
+        remind_at_minute=d.get("remind_at_minute"),
         remind_on_date=d.get("remind_on_date"),
         user_id=d.get("user_id"),
     )

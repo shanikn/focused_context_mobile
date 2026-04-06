@@ -1,6 +1,7 @@
 import re
 import logging
 from typing import Optional
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ fuzzy_time_map = {
     "evening": "18:00",
     "tonight": "20:00",
     "night": "20:00",
+    "sleep": "20:00",
     "breakfast": "09:00",
     "dinner": "20:00",
 }
@@ -105,6 +107,35 @@ def infer_time(content: str) -> Optional[str]:
     for word, t in fuzzy_time_map.items():
         if word in content_lower:
             return t
+
+    return None
+
+
+def infer_date(content: str, now: Optional[datetime] = None) -> Optional[str]:
+    content_lower = content.lower()
+    reference = now or datetime.now()
+    days_pat = r"\bin\s+(\d+)\s+days?(?:\s+from\s+now)?\b"
+    weeks_pat = r"\bin\s+(\d+)\s+weeks?(?:\s+from\s+now)?\b"
+    in_days_match = re.search(days_pat, content_lower)
+    in_weeks_match = re.search(weeks_pat, content_lower)
+
+    if "today" in content_lower:
+        return reference.strftime("%Y-%m-%d")
+
+    if "tomorrow" in content_lower:
+        return (reference + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    week_phrases = ("next week", "in a week", "in one week")
+    if any(p in content_lower for p in week_phrases):
+        return (reference + timedelta(weeks=1)).strftime("%Y-%m-%d")
+
+    if in_days_match:
+        delta = timedelta(days=int(in_days_match.group(1)))
+        return (reference + delta).strftime("%Y-%m-%d")
+
+    if in_weeks_match:
+        delta = timedelta(weeks=int(in_weeks_match.group(1)))
+        return (reference + delta).strftime("%Y-%m-%d")
 
     return None
 

@@ -1,5 +1,4 @@
 from datetime import datetime
-from sentence_transformers import SentenceTransformer
 import chromadb
 import os
 import sys
@@ -12,9 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from notepad import dict_to_note, get_note_by_id, get_all_notes  # noqa: E402
 from agents.context import get_location_bucket  # noqa: E402
 from agents.ranking_policy import score, is_on_cooldown  # noqa: E402
-
-# model setup
-model = SentenceTransformer('all-MiniLM-L6-v2')
+from agents.embedding_model import get_embedding_model  # noqa: E402
 
 # chromadb setup
 chroma_path = os.path.abspath(
@@ -98,7 +95,7 @@ def get_relevant_notes(
             return ranked[:3]
 
     # fallback: semantic search when location is unknown or no matches
-    embedding = model.encode(query).tolist()
+    embedding = get_embedding_model().encode(query).tolist()
     n = min(5, collection.count())
     if n == 0:
         return []

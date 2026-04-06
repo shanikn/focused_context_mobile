@@ -1,4 +1,3 @@
-from sentence_transformers import SentenceTransformer
 import chromadb
 import os
 import sys
@@ -8,12 +7,10 @@ logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from notepad import Note  # noqa: E402
+from agents.embedding_model import get_embedding_model  # noqa: E402
 
 # Ingestion: embed a note and store it in ChromaDB
 # so the system can answer "what notes are relevant to the current context?"
-
-# model setup
-model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # chromadb setup
 chroma_path = os.path.abspath(
@@ -25,7 +22,7 @@ collection = chroma_client.get_or_create_collection(name="notes")
 
 
 def embed_text(text: str) -> list:
-    embedding = model.encode(text)
+    embedding = get_embedding_model().encode(text)
     return embedding.tolist()
 
 

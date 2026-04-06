@@ -1,5 +1,7 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Swipeable } from "react-native-gesture-handler";
 import { Note } from "../types/notes";
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -10,6 +12,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   scheduled: "#C2185B",
   uncategorized: "#757575",
 };
+const LOCATION_CONTEXTS = new Set(["home", "uni", "work", "errands"]);
 
 interface NoteCardProps {
   note: Note;
@@ -19,13 +22,23 @@ interface NoteCardProps {
 
 export default function NoteCard({ note, onPress, onDelete }: NoteCardProps) {
   const categoryColor = CATEGORY_COLORS[note.category] || CATEGORY_COLORS.uncategorized;
+  const locationLabel =
+    note.contexts.find((item) => typeof item === "string" && LOCATION_CONTEXTS.has(item)) ?? null;
+  const manualTimeLabel =
+    note.remind_at_hour !== null
+      ? `${String(note.remind_at_hour).padStart(2, "0")}:${String(
+          note.remind_at_minute ?? 0
+        ).padStart(2, "0")}`
+      : null;
+  const inferredTimeLabel =
+    manualTimeLabel ??
+    note.contexts.find((item) => typeof item === "string" && /^\d{2}:\d{2}$/.test(item)) ??
+    null;
   const reminderLabel = !note.reminders_enabled
     ? "Alerts off"
-    : note.remind_at_hour !== null
-      ? `Alerts at ${String(note.remind_at_hour).padStart(2, "0")}:00`
-      : note.remind_on_date
-        ? `Smart alerts on ${note.remind_on_date}`
-        : "Smart alerts on";
+    : note.remind_on_date || inferredTimeLabel
+      ? `Alerts ${note.remind_on_date ? `on ${note.remind_on_date}` : ""}${note.remind_on_date && inferredTimeLabel ? " " : ""}${inferredTimeLabel ? `at ${inferredTimeLabel}` : ""}`.trim()
+      : "Smart alerts on";
 
   const handleLongPress = () => {
     Alert.alert("Delete Note", "Are you sure you want to delete this note?", [
@@ -34,40 +47,59 @@ export default function NoteCard({ note, onPress, onDelete }: NoteCardProps) {
     ]);
   };
 
-  return (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={onPress}
-      onLongPress={handleLongPress}
-    >
-      <View style={[styles.categoryStripe, { backgroundColor: categoryColor }]} />
-      <View style={styles.body}>
-        <Text style={styles.content} numberOfLines={3}>
-          {note.content}
-        </Text>
-        <View style={styles.meta}>
-          <Text style={[styles.categoryBadge, { color: categoryColor }]}>
-            {note.category}
-          </Text>
-          {note.list_name && note.list_name !== "General" && (
-            <Text style={styles.listName}>{note.list_name}</Text>
-          )}
-          <Text style={[styles.reminderBadge, !note.reminders_enabled && styles.reminderBadgeMuted]}>
-            {reminderLabel}
-          </Text>
-        </View>
-      </View>
+  const renderRightActions = () => (
+    <TouchableOpacity style={styles.deleteAction} onPress={handleLongPress}>
+      <Ionicons name="trash-outline" size={22} color="#fff" />
+      <Text style={styles.deleteActionText}>Delete</Text>
     </TouchableOpacity>
+  );
+
+  return (
+    <Swipeable
+      renderRightActions={renderRightActions}
+      overshootRight={false}
+      rightThreshold={40}
+      containerStyle={styles.swipeContainer}
+    >
+      <TouchableOpacity
+        style={styles.card}
+        onPress={onPress}
+        onLongPress={handleLongPress}
+      >
+        <View style={[styles.categoryStripe, { backgroundColor: categoryColor }]} />
+        <View style={styles.body}>
+          <Text style={styles.content} numberOfLines={3}>
+            {note.content}
+          </Text>
+          <View style={styles.meta}>
+            <Text style={[styles.categoryBadge, { color: categoryColor }]}>
+              {note.category}
+            </Text>
+            {locationLabel && (
+              <Text style={styles.contextBadge}>{locationLabel}</Text>
+            )}
+            {note.list_name && note.list_name !== "General" && (
+              <Text style={styles.listName}>{note.list_name}</Text>
+            )}
+            <Text style={[styles.reminderBadge, !note.reminders_enabled && styles.reminderBadgeMuted]}>
+              {reminderLabel}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Swipeable>
   );
 }
 
 const styles = StyleSheet.create({
+  swipeContainer: {
+    marginHorizontal: 16,
+    marginVertical: 5,
+  },
   card: {
     flexDirection: "row",
     backgroundColor: "#fff",
     borderRadius: 10,
-    marginHorizontal: 16,
-    marginVertical: 5,
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -102,6 +134,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#999",
   },
+  contextBadge: {
+    fontSize: 12,
+    color: "#546E7A",
+    fontWeight: "600",
+    textTransform: "capitalize",
+  },
   reminderBadge: {
     fontSize: 12,
     color: "#2E7D32",
@@ -109,5 +147,19 @@ const styles = StyleSheet.create({
   },
   reminderBadgeMuted: {
     color: "#999",
+  },
+  deleteAction: {
+    width: 96,
+    borderRadius: 10,
+    backgroundColor: "#d32f2f",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 4,
+    marginLeft: 8,
+  },
+  deleteActionText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
   },
 });

@@ -67,7 +67,7 @@ export default function SettingsScreen() {
       } else if (!result.permissionGranted) {
         Alert.alert("Permission needed", "Allow notifications on this device to receive alerts.");
       } else if (result.notifiedCount === 0) {
-        Alert.alert("No alerts sent", "No note is due for a phone alert right now.");
+        Alert.alert("No alerts sent", "No notes are due at the current time and context.");
       } else {
         Alert.alert("Alerts sent", `Sent ${result.notifiedCount} phone notification(s).`);
       }

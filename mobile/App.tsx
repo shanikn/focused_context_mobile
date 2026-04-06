@@ -4,6 +4,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import AuthProvider, { useAuth } from "./src/context/AuthContext";
 import LoginScreen from "./src/screens/LoginScreen";
@@ -15,7 +16,7 @@ import { Note } from "./src/types/notes";
 
 export type NotesStackParamList = {
   NotesList: undefined;
-  AddEditNote: { note?: Note } | undefined;
+  AddEditNote: { note?: Note; initialListName?: string } | undefined;
 };
 
 const Stack = createNativeStackNavigator<NotesStackParamList>();
@@ -124,8 +125,10 @@ function RootNavigator() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <RootNavigator />
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <RootNavigator />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }

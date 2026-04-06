@@ -1,6 +1,8 @@
 import logging
 from typing import Optional
+import os
 from dotenv import load_dotenv
+from fastapi import BackgroundTasks
 
 load_dotenv()
 
@@ -8,16 +10,12 @@ from pydantic import BaseModel  # noqa: E402
 from fastapi import FastAPI, Header, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from notepad import (  # noqa: E402
-    Note, get_all_notes, update_note, note_to_dict,
+    Note, get_all_notes, update_note, note_to_dict, save_note,
     get_note_by_id, dict_to_note
 )
-from agents.ingestion import ingest_note  # noqa: E402
 from agents.pipeline import (  # noqa: E402
-    process_new_notes, full_delete, process_feedback,
+    enrich_note, full_delete, process_feedback,
     get_reminders, process_all_notes
-)
-from agents.categorizer import (  # noqa: E402
-    categorize, infer_location, infer_time, default_time_for,
 )
 from auth import get_user_id  # noqa: E402
 
@@ -31,7 +29,12 @@ class NoteRequest(BaseModel):
     content: str
     list_name: str = "General"
     reminders_enabled: bool = True
+    category_explicit: bool = False
+    category: Optional[str] = None
+    remind_date_explicit: bool = False
+    remind_time_explicit: bool = False
     remind_at_hour: Optional[int] = None
+    remind_at_minute: Optional[int] = None
     remind_on_date: Optional[str] = None
 
 
@@ -47,9 +50,18 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup():
-    logging.info("Re-ingesting all notes into ChromaDB...")
-    process_all_notes()
-    logging.info("Startup ingestion complete.")
+    reingest_on_startup = os.getenv("REINGEST_ON_STARTUP", "").lower() in {
+        "1", "true", "yes", "on"
+    }
+    if reingest_on_startup:
+        logging.info("Re-ingesting all notes into ChromaDB...")
+        process_all_notes()
+        logging.info("Startup ingestion complete.")
+    else:
+        logging.info(
+            "Skipping startup re-ingestion."
+            " Set REINGEST_ON_STARTUP=true to enable it."
+        )
 
 
 @app.get("/")
@@ -68,6 +80,7 @@ def require_user_id(authorization: Optional[str]) -> str:
 @app.post("/notes/")
 def create_note(
     request: NoteRequest,
+    background_tasks: BackgroundTasks,
     authorization: Optional[str] = Header(None),
 ):
     user_id = require_user_id(authorization)
@@ -75,11 +88,17 @@ def create_note(
         content=request.content,
         list_name=request.list_name,
         reminders_enabled=request.reminders_enabled,
+        category=request.category or "uncategorized",
+        category_explicit=request.category_explicit,
+        remind_date_explicit=request.remind_date_explicit,
+        remind_time_explicit=request.remind_time_explicit,
         remind_at_hour=request.remind_at_hour,
+        remind_at_minute=request.remind_at_minute,
         remind_on_date=request.remind_on_date,
         user_id=user_id,
     )
-    process_new_notes(note)
+    save_note(note)
+    background_tasks.add_task(enrich_note, note)
     logging.info("Note created: %s (%s)", note.id, note.content[:30])
     return {"id": note.id, "content": note.content, "category": note.category}
 
@@ -112,8 +131,12 @@ def change_note(
     content: Optional[str] = None,
     list_name: Optional[str] = None,
     category: Optional[str] = None,
+    category_explicit: Optional[bool] = None,
     contexts: Optional[str] = None,
+    remind_date_explicit: Optional[bool] = None,
+    remind_time_explicit: Optional[bool] = None,
     remind_at_hour: Optional[str] = None,
+    remind_at_minute: Optional[str] = None,
     remind_on_date: Optional[str] = None,
     reminders_enabled: Optional[bool] = None,
     authorization: Optional[str] = Header(None),
@@ -126,11 +149,20 @@ def change_note(
         fields["list_name"] = list_name
     if category is not None:
         fields["category"] = category
+    if category_explicit is not None:
+        fields["category_explicit"] = category_explicit
     if contexts is not None:
         fields["contexts"] = [c.strip() for c in contexts.split(",") if c.strip()]
+    if remind_date_explicit is not None:
+        fields["remind_date_explicit"] = remind_date_explicit
+    if remind_time_explicit is not None:
+        fields["remind_time_explicit"] = remind_time_explicit
     if remind_at_hour is not None:
         hour = int(remind_at_hour) if remind_at_hour else None
         fields["remind_at_hour"] = hour
+    if remind_at_minute is not None:
+        minute = int(remind_at_minute) if remind_at_minute else None
+        fields["remind_at_minute"] = minute
     if remind_on_date is not None:
         fields["remind_on_date"] = remind_on_date if remind_on_date else None
     if reminders_enabled is not None:
@@ -139,30 +171,20 @@ def change_note(
     if matched == 0:
         raise HTTPException(status_code=404, detail="Note not found")
     # re-categorize, re-infer context, and re-embed when content changes
-    if content is not None:
+    if (
+        content is not None
+        or category is not None
+        or category_explicit is not None
+        or remind_date_explicit is not None
+        or remind_time_explicit is not None
+        or remind_at_hour is not None
+        or remind_at_minute is not None
+        or remind_on_date is not None
+    ):
         doc = get_note_by_id(note_id, user_id=user_id)
         if doc:
             note = dict_to_note(doc)
-            new_cat = categorize(content)
-            new_loc = infer_location(content, new_cat)
-            if note.remind_at_hour is not None:
-                new_time = f"{note.remind_at_hour:02d}:00"
-            else:
-                new_time = infer_time(content)
-                if new_time is None:
-                    new_time = default_time_for(new_loc)
-            new_contexts = []
-            if new_loc:
-                new_contexts.append(new_loc)
-            if new_time:
-                new_contexts.append(new_time)
-            update_note(note_id, {
-                "category": new_cat,
-                "contexts": new_contexts,
-            }, user_id=user_id)
-            note.category = new_cat
-            note.contexts = new_contexts
-            ingest_note(note)
+            enrich_note(note)
     return {"message": "updated note"}
 
 

@@ -32,7 +32,10 @@ function getCurrentSlot(now: Date): string {
 
 function getExplicitReminderTime(note: Note): { hour: number; minute: number } | null {
   if (typeof note.remind_at_hour === "number") {
-    return { hour: note.remind_at_hour, minute: 0 };
+    return {
+      hour: note.remind_at_hour,
+      minute: typeof note.remind_at_minute === "number" ? note.remind_at_minute : 0,
+    };
   }
 
   for (const item of note.contexts) {
