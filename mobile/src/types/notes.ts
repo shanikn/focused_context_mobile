@@ -14,6 +14,7 @@ export interface Note {
     never_show: boolean;
     last_shown: string | null;
     cooldown_until: string | null;
+    reminders_enabled: boolean;
     remind_at_hour: number | null;
     remind_on_date: string | null;
     user_id: string | null;

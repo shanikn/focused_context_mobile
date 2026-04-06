@@ -4,6 +4,7 @@ import { Note } from "../types/notes";
 export async function createNote(
   content: string,
   listName: string = "General",
+  remindersEnabled: boolean = true,
   remindAtHour?: number,
   remindOnDate?: string
 ): Promise<{ id: string; content: string; category: string }> {
@@ -12,6 +13,7 @@ export async function createNote(
     body: JSON.stringify({
       content,
       list_name: listName,
+      reminders_enabled: remindersEnabled,
       remind_at_hour: remindAtHour ?? null,
       remind_on_date: remindOnDate ?? null,
     }),
@@ -24,12 +26,20 @@ export async function getNotes(): Promise<Note[]> {
 
 export async function updateNote(
   noteId: string,
-  fields: { content?: string; category?: string; contexts?: string; remind_on_date?: string }
+  fields: {
+    content?: string;
+    list_name?: string;
+    category?: string;
+    contexts?: string;
+    remind_at_hour?: number | string;
+    remind_on_date?: string;
+    reminders_enabled?: boolean;
+  }
 ): Promise<{ message: string }> {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(fields)) {
     if (value !== undefined) {
-      params.append(key, value);
+      params.append(key, String(value));
     }
   }
   return apiRequest(`/notes/${noteId}?${params.toString()}`, {

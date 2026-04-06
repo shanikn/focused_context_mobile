@@ -16,7 +16,9 @@ from agents.pipeline import (  # noqa: E402
     process_new_notes, full_delete, process_feedback,
     get_reminders, process_all_notes
 )
-from agents.categorizer import categorize, infer_location, infer_time  # noqa: E402
+from agents.categorizer import (  # noqa: E402
+    categorize, infer_location, infer_time, default_time_for,
+)
 from auth import get_user_id  # noqa: E402
 
 logging.basicConfig(
@@ -28,6 +30,7 @@ logging.basicConfig(
 class NoteRequest(BaseModel):
     content: str
     list_name: str = "General"
+    reminders_enabled: bool = True
     remind_at_hour: Optional[int] = None
     remind_on_date: Optional[str] = None
 
@@ -71,6 +74,7 @@ def create_note(
     note = Note(
         content=request.content,
         list_name=request.list_name,
+        reminders_enabled=request.reminders_enabled,
         remind_at_hour=request.remind_at_hour,
         remind_on_date=request.remind_on_date,
         user_id=user_id,
@@ -106,21 +110,31 @@ def remove_note(
 def change_note(
     note_id: str,
     content: Optional[str] = None,
+    list_name: Optional[str] = None,
     category: Optional[str] = None,
     contexts: Optional[str] = None,
+    remind_at_hour: Optional[str] = None,
     remind_on_date: Optional[str] = None,
+    reminders_enabled: Optional[bool] = None,
     authorization: Optional[str] = Header(None),
 ):
     user_id = require_user_id(authorization)
     fields = {}
     if content is not None:
         fields["content"] = content
+    if list_name is not None:
+        fields["list_name"] = list_name
     if category is not None:
         fields["category"] = category
     if contexts is not None:
         fields["contexts"] = [c.strip() for c in contexts.split(",") if c.strip()]
+    if remind_at_hour is not None:
+        hour = int(remind_at_hour) if remind_at_hour else None
+        fields["remind_at_hour"] = hour
     if remind_on_date is not None:
         fields["remind_on_date"] = remind_on_date if remind_on_date else None
+    if reminders_enabled is not None:
+        fields["reminders_enabled"] = reminders_enabled
     matched = update_note(note_id, fields, user_id=user_id)
     if matched == 0:
         raise HTTPException(status_code=404, detail="Note not found")
@@ -131,7 +145,12 @@ def change_note(
             note = dict_to_note(doc)
             new_cat = categorize(content)
             new_loc = infer_location(content, new_cat)
-            new_time = infer_time(content)
+            if note.remind_at_hour is not None:
+                new_time = f"{note.remind_at_hour:02d}:00"
+            else:
+                new_time = infer_time(content)
+                if new_time is None:
+                    new_time = default_time_for(new_loc)
             new_contexts = []
             if new_loc:
                 new_contexts.append(new_loc)

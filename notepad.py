@@ -36,6 +36,7 @@ class Note:
     never_show: bool = False
     last_shown: Optional[datetime] = None
     cooldown_until: Optional[datetime] = None
+    reminders_enabled: bool = True
     remind_at_hour: Optional[int] = None  # manual override: force reminder at this hour (0-23)
     remind_on_date: Optional[str] = None  # YYYY-MM-DD; set to today at save time if not provided
     user_id: Optional[str] = None
@@ -56,6 +57,7 @@ def note_to_dict(note: Note) -> dict:
         "never_show": note.never_show,
         "last_shown": note.last_shown,  # when last resurfaced
         "cooldown_until": note.cooldown_until,  # Later=24h, Annoying=7d
+        "reminders_enabled": note.reminders_enabled,
         "remind_at_hour": note.remind_at_hour,
         "remind_on_date": note.remind_on_date,
         "user_id": note.user_id,
@@ -76,6 +78,7 @@ def dict_to_note(d: dict) -> Note:
         never_show=d["never_show"],
         last_shown=d["last_shown"],
         cooldown_until=d["cooldown_until"],
+        reminders_enabled=d.get("reminders_enabled", True),
         remind_at_hour=d.get("remind_at_hour"),
         remind_on_date=d.get("remind_on_date"),
         user_id=d.get("user_id"),

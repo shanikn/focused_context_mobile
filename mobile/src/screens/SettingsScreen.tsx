@@ -12,12 +12,13 @@ import {
   setNotificationsEnabled,
   setReminderLocation,
 } from "../lib/reminderPrefs";
-import { ensureNotificationPermissions } from "../services/reminderNotifier";
+import { checkAndNotifyReminders, ensureNotificationPermissions } from "../services/reminderNotifier";
 
 export default function SettingsScreen() {
   const { user } = useAuth();
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
   const [location, setLocation] = useState<LocationBucket>("unknown");
+  const [checkingNow, setCheckingNow] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -57,6 +58,26 @@ export default function SettingsScreen() {
     await setReminderLocation(nextLocation);
   };
 
+  const handleCheckNow = async () => {
+    setCheckingNow(true);
+    try {
+      const result = await checkAndNotifyReminders({ force: true });
+      if (!result.notificationsEnabled) {
+        Alert.alert("Notifications off", "Enable phone notifications first.");
+      } else if (!result.permissionGranted) {
+        Alert.alert("Permission needed", "Allow notifications on this device to receive alerts.");
+      } else if (result.notifiedCount === 0) {
+        Alert.alert("No alerts sent", "No note is due for a phone alert right now.");
+      } else {
+        Alert.alert("Alerts sent", `Sent ${result.notifiedCount} phone notification(s).`);
+      }
+    } catch {
+      Alert.alert("Error", "Failed to check reminders");
+    } finally {
+      setCheckingNow(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.section}>
@@ -79,6 +100,15 @@ export default function SettingsScreen() {
             thumbColor={notificationsEnabled ? "#2E7D32" : "#f4f4f4"}
           />
         </View>
+        <TouchableOpacity
+          style={[styles.checkButton, checkingNow && styles.checkButtonDisabled]}
+          onPress={handleCheckNow}
+          disabled={checkingNow}
+        >
+          <Text style={styles.checkButtonText}>
+            {checkingNow ? "Checking..." : "Check alerts now"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
@@ -184,6 +214,21 @@ const styles = StyleSheet.create({
   signOutText: {
     color: "#e53935",
     fontSize: 16,
+    fontWeight: "600",
+  },
+  checkButton: {
+    marginTop: 14,
+    backgroundColor: "#2E7D32",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  checkButtonDisabled: {
+    opacity: 0.7,
+  },
+  checkButtonText: {
+    color: "#fff",
+    fontSize: 14,
     fontWeight: "600",
   },
 });

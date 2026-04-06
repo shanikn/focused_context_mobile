@@ -81,6 +81,7 @@ def get_relevant_notes(
             dict_to_note(d) for d in all_docs
             if location_bucket in d.get("contexts", [])
             and not d.get("never_show", False)
+            and d.get("reminders_enabled", True)
         ]
         candidates = [
             n for n in candidates
@@ -120,6 +121,7 @@ def get_relevant_notes(
     filtered = [
         x for x in notes
         if not x.never_show
+        and x.reminders_enabled
         and not is_on_cooldown(x)
         and _is_due_today(x, today_str)
     ]
@@ -147,6 +149,7 @@ def get_context_reminders(
     filtered = [
         n for n in notes
         if not n.never_show
+        and n.reminders_enabled
         and not is_on_cooldown(n)
         and _is_due_today(n, today_str)
         and not _has_conflicting_location(n, location_bucket)

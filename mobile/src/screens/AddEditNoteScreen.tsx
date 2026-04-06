@@ -7,6 +7,7 @@ import {
   Text,
   StyleSheet,
   Alert,
+  Switch,
 } from "react-native";
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from "@react-navigation/native";
 import { createNote, updateNote, getNotes } from "../api/notes";
@@ -17,10 +18,18 @@ type RouteParams = RouteProp<NotesStackParamList, "AddEditNote">;
 export default function AddEditNoteScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteParams>();
+  const existingNote = route.params?.note;
 
-  const isEditing = !!route.params?.noteId;
-  const [content, setContent] = useState(route.params?.noteContent || "");
-  const [listName, setListName] = useState(route.params?.noteListName || "General");
+  const isEditing = !!existingNote?._id;
+  const [content, setContent] = useState(existingNote?.content || "");
+  const [listName, setListName] = useState(existingNote?.list_name || "General");
+  const [remindersEnabled, setRemindersEnabled] = useState(existingNote?.reminders_enabled ?? true);
+  const [remindOnDate, setRemindOnDate] = useState(existingNote?.remind_on_date || "");
+  const [remindAtHour, setRemindAtHour] = useState(
+    existingNote?.remind_at_hour !== null && existingNote?.remind_at_hour !== undefined
+      ? String(existingNote.remind_at_hour)
+      : ""
+  );
   const [existingLists, setExistingLists] = useState<string[]>([]);
   const [showNewListInput, setShowNewListInput] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -38,17 +47,50 @@ export default function AddEditNoteScreen() {
 
   const handleSave = async () => {
     const trimmed = content.trim();
+    const trimmedListName = listName.trim() || "General";
+    const trimmedDate = remindOnDate.trim();
+    const trimmedHour = remindAtHour.trim();
+    const parsedHour = trimmedHour === "" ? null : Number(trimmedHour);
+
     if (!trimmed) {
       Alert.alert("Error", "Note content cannot be empty");
+      return;
+    }
+
+    if (trimmedDate && !/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
+      Alert.alert("Error", "Reminder date must use YYYY-MM-DD");
+      return;
+    }
+
+    if (
+      trimmedHour !== "" &&
+      (parsedHour === null ||
+        !Number.isInteger(parsedHour) ||
+        parsedHour < 0 ||
+        parsedHour > 23)
+    ) {
+      Alert.alert("Error", "Reminder hour must be a number between 0 and 23");
       return;
     }
 
     setSaving(true);
     try {
       if (isEditing) {
-        await updateNote(route.params!.noteId!, { content: trimmed });
+        await updateNote(existingNote!._id, {
+          content: trimmed,
+          list_name: trimmedListName,
+          remind_on_date: trimmedDate,
+          remind_at_hour: trimmedHour,
+          reminders_enabled: remindersEnabled,
+        });
       } else {
-        await createNote(trimmed, listName.trim() || "General");
+        await createNote(
+          trimmed,
+          trimmedListName,
+          remindersEnabled,
+          parsedHour ?? undefined,
+          trimmedDate || undefined
+        );
       }
       navigation.goBack();
     } catch (err: any) {
@@ -68,7 +110,7 @@ export default function AddEditNoteScreen() {
         </TouchableOpacity>
       ),
     });
-  }, [navigation, content, listName, saving]);
+  }, [navigation, content, listName, saving, isEditing]);
 
   return (
     <View style={styles.container}>
@@ -126,6 +168,46 @@ export default function AddEditNoteScreen() {
         autoFocus={!showNewListInput}
         textAlignVertical="top"
       />
+
+      <View style={styles.reminderSection}>
+        <View style={styles.reminderHeader}>
+          <View style={styles.reminderCopy}>
+            <Text style={styles.reminderTitle}>Phone alerts for this note</Text>
+            <Text style={styles.reminderHint}>
+              Keep smart reminders on, or turn them off for notes that should stay silent.
+            </Text>
+          </View>
+          <Switch
+            value={remindersEnabled}
+            onValueChange={setRemindersEnabled}
+            trackColor={{ false: "#d7d7d7", true: "#A5D6A7" }}
+            thumbColor={remindersEnabled ? "#2E7D32" : "#f4f4f4"}
+          />
+        </View>
+
+        <Text style={styles.helperLabel}>Reminder date override</Text>
+        <TextInput
+          style={[styles.metaInput, !remindersEnabled && styles.metaInputDisabled]}
+          placeholder="YYYY-MM-DD"
+          value={remindOnDate}
+          onChangeText={setRemindOnDate}
+          editable={remindersEnabled}
+          autoCapitalize="none"
+        />
+
+        <Text style={styles.helperLabel}>Reminder hour override</Text>
+        <TextInput
+          style={[styles.metaInput, !remindersEnabled && styles.metaInputDisabled]}
+          placeholder="0-23, optional"
+          value={remindAtHour}
+          onChangeText={setRemindAtHour}
+          editable={remindersEnabled}
+          keyboardType="number-pad"
+        />
+        <Text style={styles.helperFootnote}>
+          Leave these blank to use the smart time context already inferred from the note.
+        </Text>
+      </View>
     </View>
   );
 }
@@ -179,11 +261,65 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   input: {
-    flex: 1,
     backgroundColor: "#fff",
     padding: 16,
     fontSize: 16,
     lineHeight: 24,
+    minHeight: 220,
+  },
+  reminderSection: {
+    backgroundColor: "#fff",
+    marginTop: 12,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+  },
+  reminderHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  reminderCopy: {
+    flex: 1,
+  },
+  reminderTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+  },
+  reminderHint: {
+    marginTop: 4,
+    fontSize: 13,
+    color: "#777",
+    lineHeight: 18,
+  },
+  helperLabel: {
+    marginTop: 14,
+    marginBottom: 6,
+    fontSize: 13,
+    color: "#666",
+    fontWeight: "500",
+  },
+  metaInput: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: "#333",
+    backgroundColor: "#fafafa",
+  },
+  metaInputDisabled: {
+    backgroundColor: "#f1f1f1",
+    color: "#999",
+  },
+  helperFootnote: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#888",
   },
   headerSave: {
     color: "#2E7D32",

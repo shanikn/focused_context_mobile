@@ -9,13 +9,13 @@ import AuthProvider, { useAuth } from "./src/context/AuthContext";
 import LoginScreen from "./src/screens/LoginScreen";
 import NotesListScreen from "./src/screens/NotesListScreen";
 import AddEditNoteScreen from "./src/screens/AddEditNoteScreen";
-import RemindersScreen from "./src/screens/RemindersScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import { checkAndNotifyReminders } from "./src/services/reminderNotifier";
+import { Note } from "./src/types/notes";
 
 export type NotesStackParamList = {
   NotesList: undefined;
-  AddEditNote: { noteId?: string; noteContent?: string; noteListName?: string } | undefined;
+  AddEditNote: { note?: Note } | undefined;
 };
 
 const Stack = createNativeStackNavigator<NotesStackParamList>();
@@ -34,7 +34,7 @@ function NotesStack() {
         name="AddEditNote"
         component={AddEditNoteScreen}
         options={({ route }) => ({
-          title: route.params?.noteId ? "Edit Note" : "New Note",
+          title: route.params?.note?._id ? "Edit Note" : "New Note",
         })}
       />
     </Stack.Navigator>
@@ -48,7 +48,6 @@ function MainTabs() {
         tabBarIcon: ({ color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap = "document-text";
           if (route.name === "Notes") iconName = "document-text";
-          else if (route.name === "Reminders") iconName = "notifications";
           else if (route.name === "Settings") iconName = "settings";
           return <Ionicons name={iconName} size={size} color={color} />;
         },
@@ -61,7 +60,6 @@ function MainTabs() {
         component={NotesStack}
         options={{ headerShown: false }}
       />
-      <Tab.Screen name="Reminders" component={RemindersScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );

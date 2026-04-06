@@ -139,9 +139,7 @@ export default function NotesListScreen() {
               note={item}
               onPress={() =>
                 navigation.navigate("AddEditNote", {
-                  noteId: item._id,
-                  noteContent: item.content,
-                  noteListName: item.list_name,
+                  note: item,
                 })
               }
               onDelete={() => handleDelete(item._id)}

@@ -19,6 +19,13 @@ interface NoteCardProps {
 
 export default function NoteCard({ note, onPress, onDelete }: NoteCardProps) {
   const categoryColor = CATEGORY_COLORS[note.category] || CATEGORY_COLORS.uncategorized;
+  const reminderLabel = !note.reminders_enabled
+    ? "Alerts off"
+    : note.remind_at_hour !== null
+      ? `Alerts at ${String(note.remind_at_hour).padStart(2, "0")}:00`
+      : note.remind_on_date
+        ? `Smart alerts on ${note.remind_on_date}`
+        : "Smart alerts on";
 
   const handleLongPress = () => {
     Alert.alert("Delete Note", "Are you sure you want to delete this note?", [
@@ -45,6 +52,9 @@ export default function NoteCard({ note, onPress, onDelete }: NoteCardProps) {
           {note.list_name && note.list_name !== "General" && (
             <Text style={styles.listName}>{note.list_name}</Text>
           )}
+          <Text style={[styles.reminderBadge, !note.reminders_enabled && styles.reminderBadgeMuted]}>
+            {reminderLabel}
+          </Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -90,6 +100,14 @@ const styles = StyleSheet.create({
   },
   listName: {
     fontSize: 12,
+    color: "#999",
+  },
+  reminderBadge: {
+    fontSize: 12,
+    color: "#2E7D32",
+    fontWeight: "600",
+  },
+  reminderBadgeMuted: {
     color: "#999",
   },
 });
