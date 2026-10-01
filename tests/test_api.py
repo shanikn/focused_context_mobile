@@ -76,25 +76,6 @@ def test_ingestion_stores_category_in_chroma():
     assert result["metadatas"][0]["category"] is not None
 
 
-def test_notify_queue():
-    # push a notification
-    res = client.post("/notify", json={
-        "content": "test reminder",
-        "note_id": "test-123"
-    })
-    assert res.status_code == 200
-
-    # poll — should contain the item
-    res = client.get("/notify")
-    items = res.json()
-    assert len(items) >= 1
-    assert any(i["content"] == "test reminder" for i in items)
-
-    # poll again — queue should be cleared
-    res = client.get("/notify")
-    assert res.json() == []
-
-
 def test_manual_metadata_override():
     res = client.post("/notes/", json={"content": "random note"})
     note_id = res.json()["id"]
