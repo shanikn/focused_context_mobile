@@ -1,12 +1,10 @@
-# FocusedContext — Mobile
+# FocusedContext — Android
 
 Most note-taking apps are graveyards for ideas. FocusedContext brings your notes back to life —
-resurfacing them exactly when and where you need them, as a native mobile app.
+resurfacing them exactly when and where you need them, as a native Android app.
 
-This is the React Native (Expo) version of FocusedContext. The backend is identical to the web
-version with minor cleanup. Only the frontend and notification delivery have changed.
-
-**Web version:** https://github.com/shanikn/contextmind
+The app is built with React Native and Expo (SDK 54) in `mobile/`, backed by a FastAPI server
+in `api/`.
 
 ## Overview
 
@@ -14,8 +12,8 @@ FocusedContext is a context-aware reminder system that uses semantic search and 
 context to bridge the gap between "noting" and "doing." Write "buy milk" and it appears when
 you're near a store. Write "study for exam" and it surfaces when you're at university.
 
-The mobile version replaces the browser-based frontend with a React Native app and uses
-local notifications (via expo-notifications) instead of Web Push.
+The Android app talks to the FastAPI backend and uses local notifications
+(via expo-notifications) to deliver reminders.
 
 ## Key Features
 
@@ -42,28 +40,47 @@ local notifications (via expo-notifications) instead of Web Push.
 | Primary Storage | MongoDB Atlas |
 | Vector Store | ChromaDB (384-dim embeddings) |
 | Embeddings | sentence-transformers (`all-MiniLM-L6-v2`, local) |
-| Mobile Frontend | React Native (Expo) + TypeScript |
+| Android App | React Native (Expo SDK 54) + TypeScript |
 | Location | expo-location |
 | Notifications | expo-notifications + expo-task-manager (local) |
 | Deployment | Docker, Docker Hub, Azure Web App for Containers |
-| Testing | pytest (63+ tests, 93% coverage) |
+| Testing | pytest (66 tests) |
 | Linting | flake8 (pre-commit hook on every commit) |
 
-## Running Locally On Your Phone
+## Running On Android
 
-The mobile app can target either the deployed Azure API or a backend running on your own machine.
-By default it uses Azure. To use a local backend instead:
+### Prerequisites
+
+1. Install [Android Studio](https://developer.android.com/studio) and, from its SDK Manager,
+   the Android SDK and platform tools.
+2. Create and start an emulator (Device Manager), or connect an Android phone with USB debugging enabled.
+3. Set `ANDROID_HOME` to your Android SDK path (on Windows usually
+   `%LOCALAPPDATA%\Android\Sdk`) and add `%ANDROID_HOME%\platform-tools` to your `PATH`.
+
+### Build and run
+
+```bash
+cd mobile
+npm install
+npx expo run:android
+```
+
+This builds the native Android project and installs the app on the running emulator or connected device.
+
+### Using a local backend
+
+By default the app uses the deployed Azure API. To use a backend running on your own machine instead:
 
 1. In `mobile/`, create a `.env` file.
-2. Set `EXPO_PUBLIC_API_BASE_URL=http://YOUR_COMPUTER_LAN_IP:8000`
+2. Set `EXPO_PUBLIC_API_BASE_URL` to your backend's address:
+   - Emulator: `http://10.0.2.2:8000` (the emulator's alias for your computer)
+   - Physical device: `http://YOUR_COMPUTER_LAN_IP:8000`, e.g. `http://192.168.1.100:8000`
 3. Start the backend so it listens on your network:
    `uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload`
-4. Start Expo from `mobile/`:
-   `npm start`
-5. Open the app on your phone through Expo Go while the phone and computer are on the same Wi-Fi.
+4. Rebuild/restart the app with `npx expo run:android` from `mobile/`.
 
 Notes:
-- Use your computer's LAN IP, not `localhost`.
-- Example: `http://192.168.1.100:8000`
+- Don't use `localhost` — on Android it refers to the device itself.
+- On a physical device, the phone and computer must be on the same Wi-Fi.
 - If Windows Firewall prompts for access, allow it for private networks.
 - The backend still needs its normal env/config for MongoDB and Firebase auth.
