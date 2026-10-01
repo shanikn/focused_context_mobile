@@ -10,4 +10,5 @@ CLAUDE.md
 focusedcontext-firebase-adminsdk-fbsvc-210a5ad44b.json
 firebase-credentials.json
 htmlcov/
-claudes_plan.md.coverage
+claudes_plan.md
+.coverage
