@@ -122,6 +122,7 @@ def get_relevant_notes(
         and x.reminders_enabled
         and not is_on_cooldown(x)
         and _is_due_today(x, today_str)
+        and not _has_conflicting_location(x, location_bucket)
     ]
     ranked = sorted(
         filtered,
