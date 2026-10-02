@@ -8,17 +8,52 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { auth } from "../config/firebase";
+import { auth, GOOGLE_WEB_CLIENT_ID } from "../config/firebase";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithCredential,
 } from "firebase/auth";
+import {
+  GoogleSignin,
+  isErrorWithCode,
+  isSuccessResponse,
+  statusCodes,
+} from "@react-native-google-signin/google-signin";
+
+GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID });
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // same Firebase project as the web app, so the same Google account
+  // gets the same uid (and the same notes)
+  const handleGoogleSignIn = async () => {
+    setSubmitting(true);
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+      if (!isSuccessResponse(response)) {
+        return; // user closed the account picker
+      }
+      const { idToken } = response.data;
+      if (!idToken) {
+        throw new Error("Google didn't return an idToken");
+      }
+      await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+    } catch (error: any) {
+      if (isErrorWithCode(error) && error.code === statusCodes.IN_PROGRESS) {
+        return;
+      }
+      Alert.alert("Google sign-in failed", error.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!email || !password) {
@@ -78,6 +113,14 @@ export default function LoginScreen() {
         )}
       </TouchableOpacity>
 
+      <TouchableOpacity
+        style={styles.googleButton}
+        onPress={handleGoogleSignIn}
+        disabled={submitting}
+      >
+        <Text style={styles.googleButtonText}>Sign in with Google</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
         <Text style={styles.switchText}>
           {isSignUp
@@ -131,6 +174,22 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  googleButton: {
+    width: "100%",
+    height: 48,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  googleButtonText: {
+    color: "#333",
     fontSize: 16,
     fontWeight: "600",
   },

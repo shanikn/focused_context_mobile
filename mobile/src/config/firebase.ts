@@ -12,6 +12,11 @@ const firebaseConfig = {
     measurementId: "G-3LQDTWE1BR"
 };
 
+// OAuth "Web client" (client_type 3) from google-services.json — Google
+// Sign-In needs it so the idToken it returns is accepted by Firebase Auth
+export const GOOGLE_WEB_CLIENT_ID =
+    "161204310551-uis698ooj6koph0qv9ftcidhtc62e99i.apps.googleusercontent.com";
+
 const app = initializeApp(firebaseConfig);
 const { initializeAuth } = FirebaseAuth;
 const getReactNativePersistence = (

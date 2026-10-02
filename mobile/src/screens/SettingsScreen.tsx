@@ -2,6 +2,7 @@ import React, { useCallback, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Switch } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { signOut } from "firebase/auth";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { auth } from "../config/firebase";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -33,7 +34,11 @@ export default function SettingsScreen() {
       {
         text: "Sign Out",
         style: "destructive",
-        onPress: () => signOut(auth),
+        onPress: async () => {
+          // also clear the cached Google account so the picker shows next time
+          await GoogleSignin.signOut().catch(() => {});
+          await signOut(auth);
+        },
       },
     ]);
   };
