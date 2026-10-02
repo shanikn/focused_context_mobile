@@ -71,7 +71,10 @@ def enrich_note(note: Note):
     else:
         category = categorize(note.content)
     contexts = []
-    location = infer_location(note.content, category)
+    if note.location_explicit and note.location_value:
+        location = note.location_value
+    else:
+        location = infer_location(note.content, category)
     if location:
         contexts.append(location)
     # use manual hour override if set, otherwise infer
@@ -99,6 +102,7 @@ def enrich_note(note: Note):
     update_note(note.id, {
         "category": category,
         "contexts": contexts,
+        "location_value": location if note.location_explicit else None,
         "remind_on_date": resolved_date,
     })
     # ingest after categorization so ChromaDB gets complete metadata
@@ -141,7 +145,10 @@ def reingest_note(note: Note):
     else:
         category = categorize(note.content)
     contexts = []
-    location = infer_location(note.content, category)
+    if note.location_explicit and note.location_value:
+        location = note.location_value
+    else:
+        location = infer_location(note.content, category)
     if location:
         contexts.append(location)
     if note.remind_time_explicit and note.remind_at_hour is not None:
@@ -167,6 +174,7 @@ def reingest_note(note: Note):
         {
             "category": category,
             "contexts": contexts,
+            "location_value": location if note.location_explicit else None,
             "remind_on_date": note.remind_on_date,
         }
     )

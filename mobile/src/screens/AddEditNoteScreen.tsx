@@ -18,6 +18,7 @@ import { getCustomLists } from "../lib/listPrefs";
 
 type RouteParams = RouteProp<NotesStackParamList, "AddEditNote">;
 const CATEGORY_OPTIONS = ["task", "errand", "idea", "reminder", "scheduled", "uncategorized"] as const;
+const LOCATION_OPTIONS = ["home", "uni", "work", "errands"] as const;
 
 function formatDateValue(date: Date | null): string {
   if (!date) {
@@ -72,6 +73,8 @@ export default function AddEditNoteScreen() {
   const [listName, setListName] = useState(existingNote?.list_name || initialListName || "General");
   const [categoryExplicit, setCategoryExplicit] = useState(existingNote?.category_explicit ?? false);
   const [selectedCategory, setSelectedCategory] = useState(existingNote?.category || "uncategorized");
+  const [locationExplicit, setLocationExplicit] = useState(existingNote?.location_explicit ?? false);
+  const [selectedLocation, setSelectedLocation] = useState(existingNote?.location_value || "home");
   const [remindersEnabled, setRemindersEnabled] = useState(existingNote?.reminders_enabled ?? true);
   const [dateOverrideEnabled, setDateOverrideEnabled] = useState(
     existingNote?.remind_date_explicit ?? false
@@ -123,6 +126,8 @@ export default function AddEditNoteScreen() {
           list_name: trimmedListName,
           category: selectedCategory,
           category_explicit: categoryExplicit,
+          location_explicit: locationExplicit,
+          location_value: locationExplicit ? selectedLocation : "",
           remind_date_explicit: dateOverrideEnabled,
           remind_time_explicit: timeOverrideEnabled,
           remind_on_date: reminderDate,
@@ -137,6 +142,8 @@ export default function AddEditNoteScreen() {
           remindersEnabled,
           categoryExplicit,
           selectedCategory,
+          locationExplicit,
+          locationExplicit ? selectedLocation : undefined,
           dateOverrideEnabled,
           timeOverrideEnabled,
           reminderHour ?? undefined,
@@ -254,6 +261,46 @@ export default function AddEditNoteScreen() {
                 ]}
               >
                 {category}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      <View style={styles.categorySection}>
+        <Text style={styles.sectionTitle}>Location</Text>
+        <Text style={styles.sectionHint}>
+          Keep smart location inference, or override it if this note belongs to a specific place.
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.listPills}
+        >
+          <TouchableOpacity
+            style={[styles.pill, !locationExplicit && styles.pillActive]}
+            onPress={() => setLocationExplicit(false)}
+          >
+            <Text style={[styles.pillText, !locationExplicit && styles.pillTextActive]}>
+              Smart
+            </Text>
+          </TouchableOpacity>
+          {LOCATION_OPTIONS.map((location) => (
+            <TouchableOpacity
+              key={location}
+              style={[styles.pill, locationExplicit && selectedLocation === location && styles.pillActive]}
+              onPress={() => {
+                setSelectedLocation(location);
+                setLocationExplicit(true);
+              }}
+            >
+              <Text
+                style={[
+                  styles.pillText,
+                  locationExplicit && selectedLocation === location && styles.pillTextActive,
+                ]}
+              >
+                {location}
               </Text>
             </TouchableOpacity>
           ))}

@@ -31,6 +31,8 @@ class NoteRequest(BaseModel):
     reminders_enabled: bool = True
     category_explicit: bool = False
     category: Optional[str] = None
+    location_explicit: bool = False
+    location_value: Optional[str] = None
     remind_date_explicit: bool = False
     remind_time_explicit: bool = False
     remind_at_hour: Optional[int] = None
@@ -90,6 +92,8 @@ def create_note(
         reminders_enabled=request.reminders_enabled,
         category=request.category or "uncategorized",
         category_explicit=request.category_explicit,
+        location_explicit=request.location_explicit,
+        location_value=request.location_value,
         remind_date_explicit=request.remind_date_explicit,
         remind_time_explicit=request.remind_time_explicit,
         remind_at_hour=request.remind_at_hour,
@@ -132,6 +136,8 @@ def change_note(
     list_name: Optional[str] = None,
     category: Optional[str] = None,
     category_explicit: Optional[bool] = None,
+    location_explicit: Optional[bool] = None,
+    location_value: Optional[str] = None,
     contexts: Optional[str] = None,
     remind_date_explicit: Optional[bool] = None,
     remind_time_explicit: Optional[bool] = None,
@@ -151,6 +157,10 @@ def change_note(
         fields["category"] = category
     if category_explicit is not None:
         fields["category_explicit"] = category_explicit
+    if location_explicit is not None:
+        fields["location_explicit"] = location_explicit
+    if location_value is not None:
+        fields["location_value"] = location_value if location_value else None
     if contexts is not None:
         fields["contexts"] = [c.strip() for c in contexts.split(",") if c.strip()]
     if remind_date_explicit is not None:
@@ -175,6 +185,8 @@ def change_note(
         content is not None
         or category is not None
         or category_explicit is not None
+        or location_explicit is not None
+        or location_value is not None
         or remind_date_explicit is not None
         or remind_time_explicit is not None
         or remind_at_hour is not None

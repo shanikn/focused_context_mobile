@@ -16,6 +16,8 @@ export interface Note {
     cooldown_until: string | null;
     reminders_enabled: boolean;
     category_explicit: boolean;
+    location_explicit: boolean;
+    location_value: string | null;
     remind_date_explicit: boolean;
     remind_time_explicit: boolean;
     remind_at_hour: number | null;

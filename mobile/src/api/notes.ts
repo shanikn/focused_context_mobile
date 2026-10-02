@@ -7,6 +7,8 @@ export async function createNote(
   remindersEnabled: boolean = true,
   categoryExplicit: boolean = false,
   category?: string,
+  locationExplicit: boolean = false,
+  locationValue?: string,
   remindDateExplicit: boolean = false,
   remindTimeExplicit: boolean = false,
   remindAtHour?: number,
@@ -21,6 +23,8 @@ export async function createNote(
       reminders_enabled: remindersEnabled,
       category_explicit: categoryExplicit,
       category: category ?? null,
+      location_explicit: locationExplicit,
+      location_value: locationValue ?? null,
       remind_date_explicit: remindDateExplicit,
       remind_time_explicit: remindTimeExplicit,
       remind_at_hour: remindAtHour ?? null,
@@ -41,6 +45,8 @@ export async function updateNote(
     list_name?: string;
     category?: string;
     category_explicit?: boolean;
+    location_explicit?: boolean;
+    location_value?: string;
     contexts?: string;
     remind_date_explicit?: boolean;
     remind_time_explicit?: boolean;
