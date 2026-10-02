@@ -120,3 +120,76 @@ def test_edit_content_re_infers_context():
     note = next(n for n in notes if n["_id"] == note_id)
     full_delete(note_id)
     assert "18:00" in note["contexts"]
+
+
+def _app_edit_payload(content, hour, minute, time_explicit=True):
+    # the exact query params the mobile edit screen sends on "Update"
+    return {
+        "content": content,
+        "list_name": "General",
+        "category": "uncategorized",
+        "category_explicit": "false",
+        "location_explicit": "false",
+        "location_value": "",
+        "remind_date_explicit": "false",
+        "remind_time_explicit": "true" if time_explicit else "false",
+        "remind_on_date": "",
+        "remind_at_hour": "" if hour is None else str(hour),
+        "remind_at_minute": "" if minute is None else str(minute),
+        "reminders_enabled": "true",
+    }
+
+
+def _get_note(note_id):
+    notes = client.get("/notes/").json()
+    return next(n for n in notes if n["_id"] == note_id)
+
+
+def test_edited_reminder_time_is_kept():
+    res = client.post("/notes/", json={"content": "go for a morning jog"})
+    note_id = res.json()["id"]
+
+    client.put(f"/notes/{note_id}", params=_app_edit_payload("go for a morning jog", 14, 30))
+    after_time_edit = _get_note(note_id)
+
+    # a later edit of only the text (no time params) must not drop the time
+    client.put(f"/notes/{note_id}", params={"content": "go for a morning run"})
+    after_text_edit = _get_note(note_id)
+
+    full_delete(note_id)
+    for note in (after_time_edit, after_text_edit):
+        assert note["remind_time_explicit"] is True
+        assert note["remind_at_hour"] == 14
+        assert note["remind_at_minute"] == 30
+        assert "14:30" in note["contexts"]
+        assert "09:00" not in note["contexts"]
+
+
+def test_edited_reminder_time_midnight_is_kept():
+    res = client.post("/notes/", json={"content": "take vitamins"})
+    note_id = res.json()["id"]
+
+    client.put(f"/notes/{note_id}", params=_app_edit_payload("take vitamins", 0, 0))
+    note = _get_note(note_id)
+
+    full_delete(note_id)
+    assert note["remind_at_hour"] == 0
+    assert "00:00" in note["contexts"]
+
+
+def test_cleared_reminder_time_goes_back_to_smart_time():
+    res = client.post("/notes/", json={"content": "go for a morning jog"})
+    note_id = res.json()["id"]
+    client.put(f"/notes/{note_id}", params=_app_edit_payload("go for a morning jog", 14, 30))
+
+    client.put(
+        f"/notes/{note_id}",
+        params=_app_edit_payload("go for a morning jog", None, None, time_explicit=False),
+    )
+    note = _get_note(note_id)
+
+    full_delete(note_id)
+    assert note["remind_time_explicit"] is False
+    assert note["remind_at_hour"] is None
+    assert "14:30" not in note["contexts"]
+    assert "09:00" in note["contexts"]

@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect, useCallback } from "react";
+import React, { useState, useLayoutEffect, useCallback, useRef } from "react";
 import {
   View,
   TextInput,
@@ -159,17 +159,24 @@ export default function AddEditNoteScreen() {
     }
   };
 
+  // The header button is set up once per effect run, so it must call the
+  // latest handleSave. Capturing handleSave directly saved stale state:
+  // changing only the time/date/category/location and tapping Update sent
+  // the old values.
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <TouchableOpacity onPress={handleSave} disabled={saving}>
+        <TouchableOpacity onPress={() => handleSaveRef.current()} disabled={saving}>
           <Text style={styles.headerSave}>
             {saving ? "Saving..." : isEditing ? "Update" : "Save"}
           </Text>
         </TouchableOpacity>
       ),
     });
-  }, [navigation, content, listName, saving, isEditing]);
+  }, [navigation, saving, isEditing]);
 
   const handleDateChange = (_event: DateTimePickerEvent, nextDate?: Date) => {
     if (Platform.OS !== "ios") {

@@ -44,7 +44,7 @@ The Android app talks to the FastAPI backend and uses local notifications
 | Location | expo-location |
 | Notifications | expo-notifications + expo-task-manager (local) |
 | Deployment | Docker, Docker Hub, Azure Web App for Containers |
-| Testing | pytest (65 tests) |
+| Testing | pytest (68 tests) |
 | Linting | flake8 (pre-commit hook on every commit) |
 
 ## Running On Android
