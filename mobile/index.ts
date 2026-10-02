@@ -1,5 +1,8 @@
 import { registerRootComponent } from 'expo';
 
+// registers the geofence background task before anything else, so it also
+// exists when Android starts the app in the background for a geofence event
+import './src/services/geofence';
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);

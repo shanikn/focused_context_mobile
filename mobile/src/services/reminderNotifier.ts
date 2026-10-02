@@ -94,8 +94,11 @@ export async function fetchCurrentReminders(): Promise<{
   return { reminders, location };
 }
 
+// on arrival at a saved place, notify up to this many of its top notes
+const MAX_ARRIVAL_NOTES = 3;
+
 export async function checkAndNotifyReminders(
-  options: { force?: boolean } = {}
+  options: { force?: boolean; onArrival?: boolean } = {}
 ): Promise<ReminderCheckResult> {
   const notificationsEnabled = await getNotificationsEnabled();
   const permissionGranted = notificationsEnabled
@@ -118,8 +121,15 @@ export async function checkAndNotifyReminders(
   const slot = getCurrentSlot(now);
   let notifiedCount = 0;
 
-  for (const note of reminders) {
-    if (!isDueNow(note, now)) {
+  // arrival: the top notes for this place (the backend already ranks and
+  // filters them for the location), whether or not they have a time.
+  // otherwise: only notes whose time is due now
+  const candidates = options.onArrival
+    ? reminders.slice(0, MAX_ARRIVAL_NOTES)
+    : reminders;
+
+  for (const note of candidates) {
+    if (!options.onArrival && !isDueNow(note, now)) {
       continue;
     }
 

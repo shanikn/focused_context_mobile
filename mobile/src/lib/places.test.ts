@@ -9,10 +9,6 @@ import {
   savePlace,
 } from "./places";
 
-jest.mock("@react-native-async-storage/async-storage", () =>
-  require("@react-native-async-storage/async-storage/jest/async-storage-mock")
-);
-
 const HOME = { bucket: "home" as const, label: "Home", latitude: 32.16, longitude: 34.84 };
 const UNI = { bucket: "uni" as const, label: "Reichman", latitude: 32.176, longitude: 34.836 };
 

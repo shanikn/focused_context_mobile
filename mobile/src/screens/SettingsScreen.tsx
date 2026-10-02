@@ -36,6 +36,7 @@ import {
 } from "../lib/places";
 import { GrantedPermissions, locationStatus } from "../lib/locationPermissionFlow";
 import { getGrantedPermissions } from "../services/locationPermissions";
+import { syncGeofencing } from "../services/geofence";
 import {
   LocationPermissionModal,
   useLocationPermissionFlow,
@@ -75,6 +76,7 @@ export default function SettingsScreen() {
         });
         await savePlace(placeFromPosition(bucket, position.coords));
         await refreshPlaces();
+        await syncGeofencing();
       } catch {
         Alert.alert("Couldn't get your location", "Check that location is on and try again.");
       } finally {
@@ -87,6 +89,7 @@ export default function SettingsScreen() {
   const handlePermissionFlowDone = useCallback(
     (granted: GrantedPermissions) => {
       setPermissions(granted);
+      syncGeofencing();
       const bucket = pendingBucket.current;
       pendingBucket.current = null;
       if (!bucket) {
@@ -126,6 +129,7 @@ export default function SettingsScreen() {
         onPress: async () => {
           await removePlace(place.id);
           await refreshPlaces();
+          await syncGeofencing();
         },
       },
     ]);
@@ -173,6 +177,8 @@ export default function SettingsScreen() {
         );
       }
     }
+    // turning notifications off stops geofencing; turning them on restarts it
+    await syncGeofencing();
   };
 
   const handleSelectLocation = async (nextLocation: LocationBucket) => {

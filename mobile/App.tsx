@@ -12,6 +12,7 @@ import NotesListScreen from "./src/screens/NotesListScreen";
 import AddEditNoteScreen from "./src/screens/AddEditNoteScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import { checkAndNotifyReminders } from "./src/services/reminderNotifier";
+import { syncGeofencing } from "./src/services/geofence";
 import { Note } from "./src/types/notes";
 
 export type NotesStackParamList = {
@@ -93,11 +94,15 @@ function RootNavigator() {
     };
 
     runReminderCheck();
+    // re-register geofences on start, and stop them if location access was
+    // revoked in system settings while the app was in the background
+    syncGeofencing();
 
     const interval = setInterval(runReminderCheck, REMINDER_POLL_MS);
     const appStateSubscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         runReminderCheck();
+        syncGeofencing();
       }
     });
 
