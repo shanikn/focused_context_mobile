@@ -35,9 +35,21 @@ export default function SettingsScreen() {
         text: "Sign Out",
         style: "destructive",
         onPress: async () => {
-          // also clear the cached Google account so the picker shows next time
-          await GoogleSignin.signOut().catch(() => {});
+          const usedGoogle = auth.currentUser?.providerData.some(
+            (p) => p.providerId === "google.com"
+          );
           await signOut(auth);
+          if (!usedGoogle) {
+            return;
+          }
+          // clear the cached Google account so the picker shows next time.
+          // Not awaited: with outdated Play services this promise never
+          // settles, and it must never block the Firebase sign-out above.
+          try {
+            GoogleSignin.signOut().catch(() => {});
+          } catch {
+            // native module unavailable — nothing to clear
+          }
         },
       },
     ]);
