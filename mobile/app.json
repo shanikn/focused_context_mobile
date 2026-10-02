@@ -42,7 +42,14 @@
       "expo-web-browser",
       "expo-notifications",
       "@react-native-community/datetimepicker",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      [
+        "expo-location",
+        {
+          "isAndroidBackgroundLocationEnabled": true,
+          "locationAlwaysAndWhenInUsePermission": "FocusedContext uses your location to show the right notes when you arrive at your saved places."
+        }
+      ]
     ]
   }
 }
