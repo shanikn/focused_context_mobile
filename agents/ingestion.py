@@ -14,7 +14,8 @@ from agents.embedding_model import get_embedding_model  # noqa: E402
 
 # chromadb setup
 chroma_path = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "chroma_db")
+    os.getenv("CHROMA_PATH")
+    or os.path.join(os.path.dirname(__file__), "..", "chroma_db")
 )
 os.makedirs(chroma_path, exist_ok=True)
 chroma_client = chromadb.PersistentClient(path=chroma_path)

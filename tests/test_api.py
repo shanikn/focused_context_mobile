@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 from api.main import app
 from agents.pipeline import full_delete, process_new_notes
@@ -80,10 +80,13 @@ def test_manual_metadata_override():
     res = client.post("/notes/", json={"content": "random note"})
     note_id = res.json()["id"]
 
-    # manually override category and location
+    # manually override category and location (explicit flags stop the
+    # re-inference on update from overwriting them)
     client.put(f"/notes/{note_id}", params={
         "category": "task",
-        "contexts": "home"
+        "category_explicit": "true",
+        "location_explicit": "true",
+        "location_value": "home",
     })
 
     notes = client.get("/notes/").json()
@@ -93,13 +96,14 @@ def test_manual_metadata_override():
     assert "home" in note["contexts"]
 
 
-def test_remind_on_date_today():
-    note = Note(content="pick up laundry")
+def test_remind_on_date_past_time_moves_to_tomorrow():
+    # 00:00 has always passed today, so smart dating moves it to tomorrow
+    note = Note(content="pick up laundry at 00:00")
     process_new_notes(note)
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     full_delete(note.id)
-    assert note.remind_on_date == today
+    assert note.remind_on_date == tomorrow
 
 
 def test_edit_content_re_infers_context():

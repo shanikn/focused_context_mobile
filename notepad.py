@@ -14,9 +14,10 @@ load_dotenv()
 
 # mongodb connection setup
 MONGO_URI = os.getenv("MONGO_URI")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "contextmind")
 
 client = MongoClient(MONGO_URI)
-db = client["contextmind"]
+db = client[MONGO_DB_NAME]
 notes_collection = db["notes"]
 
 
