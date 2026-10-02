@@ -1,5 +1,14 @@
-import React, { useCallback, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Switch } from "react-native";
+import React, { useCallback, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  Switch,
+  ScrollView,
+} from "react-native";
+import * as Location from "expo-location";
 import { useFocusEffect } from "@react-navigation/native";
 import { signOut } from "firebase/auth";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
@@ -14,19 +23,115 @@ import {
   setReminderLocation,
 } from "../lib/reminderPrefs";
 import { checkAndNotifyReminders, ensureNotificationPermissions } from "../services/reminderNotifier";
+import {
+  bucketLabel,
+  getPlaces,
+  Place,
+  PLACE_BUCKETS,
+  PlaceBucket,
+  placeFromPosition,
+  placesByBucket,
+  removePlace,
+  savePlace,
+} from "../lib/places";
+import { GrantedPermissions, locationStatus } from "../lib/locationPermissionFlow";
+import { getGrantedPermissions } from "../services/locationPermissions";
+import {
+  LocationPermissionModal,
+  useLocationPermissionFlow,
+} from "../components/LocationPermissionFlow";
 
 export default function SettingsScreen() {
   const { user } = useAuth();
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
   const [location, setLocation] = useState<LocationBucket>("unknown");
   const [checkingNow, setCheckingNow] = useState(false);
+  const [places, setPlaces] = useState<Record<PlaceBucket, Place | null>>(placesByBucket([]));
+  const [permissions, setPermissions] = useState<GrantedPermissions | null>(null);
+  const [savingBucket, setSavingBucket] = useState<PlaceBucket | null>(null);
+  // bucket the user tapped before the permission flow, saved once it finishes
+  const pendingBucket = useRef<PlaceBucket | null>(null);
+
+  const refreshPlaces = useCallback(async () => {
+    setPlaces(placesByBucket(await getPlaces()));
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       getNotificationsEnabled().then(setNotificationsEnabledState).catch(() => {});
       getReminderLocation().then(setLocation).catch(() => {});
-    }, [])
+      refreshPlaces().catch(() => {});
+      // read-only: never prompts
+      getGrantedPermissions().then(setPermissions).catch(() => {});
+    }, [refreshPlaces])
   );
+
+  const saveCurrentLocationAs = useCallback(
+    async (bucket: PlaceBucket) => {
+      setSavingBucket(bucket);
+      try {
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        await savePlace(placeFromPosition(bucket, position.coords));
+        await refreshPlaces();
+      } catch {
+        Alert.alert("Couldn't get your location", "Check that location is on and try again.");
+      } finally {
+        setSavingBucket(null);
+      }
+    },
+    [refreshPlaces]
+  );
+
+  const handlePermissionFlowDone = useCallback(
+    (granted: GrantedPermissions) => {
+      setPermissions(granted);
+      const bucket = pendingBucket.current;
+      pendingBucket.current = null;
+      if (!bucket) {
+        return;
+      }
+      if (granted.foreground) {
+        saveCurrentLocationAs(bucket);
+      } else {
+        Alert.alert(
+          "Location not allowed",
+          "Without location access, set your current context with the picker instead."
+        );
+      }
+    },
+    [saveCurrentLocationAs]
+  );
+
+  const permissionFlow = useLocationPermissionFlow(handlePermissionFlowDone);
+
+  const handleSetPlace = async (bucket: PlaceBucket) => {
+    const granted = await getGrantedPermissions();
+    setPermissions(granted);
+    if (granted.foreground) {
+      await saveCurrentLocationAs(bucket);
+      return;
+    }
+    pendingBucket.current = bucket;
+    await permissionFlow.start();
+  };
+
+  const handleRemovePlace = (place: Place) => {
+    Alert.alert("Remove place", `Remove your saved ${place.label} location?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          await removePlace(place.id);
+          await refreshPlaces();
+        },
+      },
+    ]);
+  };
+
+  const status = permissions ? locationStatus(permissions) : null;
 
   const handleSignOut = () => {
     Alert.alert("Sign Out", "Are you sure?", [
@@ -96,7 +201,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.section}>
         <Text style={styles.label}>Signed in as</Text>
         <Text style={styles.email}>{user?.email}</Text>
@@ -129,9 +234,55 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Saved places</Text>
+        <Text style={styles.helperText}>
+          Stand at a place and save it. Places stay on this phone.
+        </Text>
+        {status && (
+          <Text style={[styles.statusText, status.mode === "manual" && styles.statusManual]}>
+            {status.message}
+          </Text>
+        )}
+        {status?.mode === "manual" && (
+          <TouchableOpacity style={styles.linkButton} onPress={() => permissionFlow.start()}>
+            <Text style={styles.linkButtonText}>Turn on automatic location</Text>
+          </TouchableOpacity>
+        )}
+        {PLACE_BUCKETS.map((bucket) => {
+          const place = places[bucket];
+          return (
+            <View key={bucket} style={styles.placeRow}>
+              <View style={styles.rowText}>
+                <Text style={styles.placeName}>{bucketLabel(bucket)}</Text>
+                <Text style={styles.helperText}>
+                  {place ? `Saved, ${place.radius} m radius` : "Not set"}
+                </Text>
+              </View>
+              {place && (
+                <TouchableOpacity onPress={() => handleRemovePlace(place)}>
+                  <Text style={styles.removeText}>Remove</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.placeButton, savingBucket !== null && styles.checkButtonDisabled]}
+                onPress={() => handleSetPlace(bucket)}
+                disabled={savingBucket !== null}
+              >
+                <Text style={styles.placeButtonText}>
+                  {savingBucket === bucket
+                    ? "Saving..."
+                    : `Set ${bucketLabel(bucket)} to my current location`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Current reminder context</Text>
         <Text style={styles.helperText}>
-          Choose which bucket the reminder engine should use until GPS support is added.
+          Manual fallback and override: pick where you are now.
         </Text>
         <View style={styles.pillWrap}>
           {LOCATION_BUCKETS.map((option) => (
@@ -151,7 +302,13 @@ export default function SettingsScreen() {
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
-    </View>
+
+      <LocationPermissionModal
+        screen={permissionFlow.screen}
+        onContinue={permissionFlow.proceed}
+        onSkip={permissionFlow.skip}
+      />
+    </ScrollView>
   );
 }
 
@@ -159,6 +316,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",
+  },
+  content: {
     padding: 16,
   },
   section: {
@@ -219,6 +378,53 @@ const styles = StyleSheet.create({
   pillTextActive: {
     color: "#fff",
     fontWeight: "600",
+  },
+  statusText: {
+    fontSize: 13,
+    color: "#2E7D32",
+    lineHeight: 18,
+    marginTop: 10,
+  },
+  statusManual: {
+    color: "#B26A00",
+  },
+  linkButton: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+  },
+  linkButtonText: {
+    color: "#2E7D32",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  placeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 12,
+  },
+  placeName: {
+    fontSize: 15,
+    color: "#333",
+    fontWeight: "500",
+  },
+  placeButton: {
+    flexShrink: 1,
+    maxWidth: 170,
+    backgroundColor: "#2E7D32",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  placeButtonText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  removeText: {
+    color: "#e53935",
+    fontSize: 13,
   },
   signOutButton: {
     backgroundColor: "#fff",

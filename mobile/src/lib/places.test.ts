@@ -2,6 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   DEFAULT_RADIUS_METERS,
   getPlaces,
+  PLACE_BUCKETS,
+  placeFromPosition,
+  placesByBucket,
   removePlace,
   savePlace,
 } from "./places";
@@ -76,4 +79,24 @@ test("the 'unknown' bucket can't be saved as a place", async () => {
 test("corrupt stored data is treated as no places", async () => {
   await AsyncStorage.setItem("focusedcontext.places", "not json");
   expect(await getPlaces()).toEqual([]);
+});
+
+test("PLACE_BUCKETS are the four real places, without 'unknown'", () => {
+  expect(PLACE_BUCKETS).toEqual(["home", "uni", "work", "errands"]);
+});
+
+test("placesByBucket gives every bucket, with null where nothing is saved", async () => {
+  const uni = await savePlace(UNI);
+  expect(placesByBucket(await getPlaces())).toEqual({
+    home: null,
+    uni,
+    work: null,
+    errands: null,
+  });
+});
+
+test("placeFromPosition turns a GPS fix into a place for that bucket", () => {
+  expect(
+    placeFromPosition("work", { latitude: 32.08, longitude: 34.78 })
+  ).toEqual({ bucket: "work", label: "Work", latitude: 32.08, longitude: 34.78 });
 });

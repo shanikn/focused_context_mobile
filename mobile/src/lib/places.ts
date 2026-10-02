@@ -10,6 +10,8 @@ const STORAGE_KEY = "focusedcontext.places";
 // "unknown" means "not at a saved place", so it can't be a place itself
 export type PlaceBucket = Exclude<LocationBucket, "unknown">;
 
+export const PLACE_BUCKETS = ["home", "uni", "work", "errands"] as const satisfies readonly PlaceBucket[];
+
 export interface Place {
   id: string;
   bucket: PlaceBucket;
@@ -58,6 +60,35 @@ export async function savePlace(input: NewPlace): Promise<Place> {
   const others = (await getPlaces()).filter((p) => p.bucket !== place.bucket);
   await writePlaces([...others, place]);
   return place;
+}
+
+export function bucketLabel(bucket: PlaceBucket): string {
+  return bucket.charAt(0).toUpperCase() + bucket.slice(1);
+}
+
+export function placesByBucket(places: Place[]): Record<PlaceBucket, Place | null> {
+  const result = { home: null, uni: null, work: null, errands: null } as Record<
+    PlaceBucket,
+    Place | null
+  >;
+  for (const place of places) {
+    if (place.bucket in result) {
+      result[place.bucket] = place;
+    }
+  }
+  return result;
+}
+
+export function placeFromPosition(
+  bucket: PlaceBucket,
+  coords: { latitude: number; longitude: number }
+): NewPlace {
+  return {
+    bucket,
+    label: bucketLabel(bucket),
+    latitude: coords.latitude,
+    longitude: coords.longitude,
+  };
 }
 
 export async function removePlace(id: string): Promise<void> {
