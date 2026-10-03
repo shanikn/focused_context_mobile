@@ -1,5 +1,6 @@
 import re
 import logging
+from functools import lru_cache
 from typing import Optional
 from datetime import datetime, timedelta
 
@@ -140,29 +141,72 @@ def infer_date(content: str, now: Optional[datetime] = None) -> Optional[str]:
     return None
 
 
+# default reminder time for the built-in places; custom places have none
 location_time_defaults = {
     "home": "09:00",
     "uni": "09:00",
     "work": "09:00",
-    "errands": "15:00",
 }
 
+# built-in keywords for the default places, by Place.kind
+kind_keywords = {
+    "home": home_keywords,
+    "uni": uni_keywords,
+    "work": work_keywords,
+}
 
-def default_time_for(location: str) -> Optional[str]:
-    return location_time_defaults.get(location, None)
+# semantic fallback: tag a place only on a clear match (measured on
+# all-MiniLM-L6-v2: real matches 0.31-0.56, unrelated notes <= 0.27)
+SEMANTIC_THRESHOLD = 0.30
+SEMANTIC_MARGIN = 0.08
 
 
-def infer_location(content: str, category: str) -> str:
-    content = content.lower()
-    for kw in home_keywords:
-        if _has_word(content, kw):
-            return "home"
-    for kw in uni_keywords:
-        if _has_word(content, kw):
-            return "uni"
-    for kw in work_keywords:
-        if _has_word(content, kw):
-            return "work"
-    if category == "errand":
-        return "errands"
-    return ""
+def default_time_for(place) -> Optional[str]:
+    if place is None:
+        return None
+    return location_time_defaults.get(place.kind)
+
+
+def _place_words(place) -> list:
+    return [place.name.lower(), *place.keywords]
+
+
+@lru_cache(maxsize=256)
+def _embed(text: str):
+    from agents.embedding_model import get_embedding_model
+    return get_embedding_model().encode(text, convert_to_tensor=True)
+
+
+def _semantic_match(content: str, places: list):
+    from sentence_transformers.util import cos_sim
+    note = _embed(content)
+    scored = sorted(
+        ((float(cos_sim(note, _embed(", ".join(_place_words(p))))), p) for p in places),
+        key=lambda x: x[0],
+        reverse=True,
+    )
+    best_score, best = scored[0]
+    runner_up = scored[1][0] if len(scored) > 1 else 0.0
+    if best_score >= SEMANTIC_THRESHOLD and best_score - runner_up >= SEMANTIC_MARGIN:
+        return best
+    return None
+
+
+def infer_place(content: str, places: list):
+    """The user's place a note belongs to, or None.
+    1. the user's own places by name or keyword (most specific first)
+    2. the built-in keywords of Home / Uni / Work
+    3. semantic similarity between the note and each place's name + keywords
+    """
+    if not places:
+        return None
+    text = content.lower()
+    custom = [p for p in places if p.kind is None]
+    for place in custom:
+        if any(_has_word(text, w) for w in _place_words(place)):
+            return place
+    for place in places:
+        words = kind_keywords.get(place.kind, []) + _place_words(place)
+        if place.kind and any(_has_word(text, w) for w in words):
+            return place
+    return _semantic_match(content, places)

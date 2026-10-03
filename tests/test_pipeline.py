@@ -26,7 +26,7 @@ def test_get_reminders():
     process_new_notes(note2)
     process_new_notes(note3)
 
-    result = get_reminders("walk the dog", "errands", 18)
+    result = get_reminders("walk the dog", "unknown", 18)
     expected_ids = {note1.id, note2.id, note3.id}
     full_delete(note1.id)
     full_delete(note2.id)

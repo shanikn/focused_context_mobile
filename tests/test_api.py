@@ -13,7 +13,7 @@ def test_reminders_returns_list():
     res = client.post("/notes/", json={"content": "buy milk"})
     note_id = res.json()["id"]
 
-    res = client.get("/reminders/", params={"location": "errands", "hour": 15})
+    res = client.get("/reminders/", params={"location": "home", "hour": 15})
     assert res.status_code == 200
     assert isinstance(res.json(), list)
 
@@ -21,7 +21,7 @@ def test_reminders_returns_list():
 
 
 def test_edit_content_updates_embeddings():
-    # create a note about errands
+    # create a note about groceries
     res = client.post("/notes/", json={"content": "buy groceries"})
     note_id = res.json()["id"]
 
@@ -59,7 +59,7 @@ def test_never_show_note_excluded_from_reminders():
     # should not appear in reminders
     res = client.get(
         "/reminders/",
-        params={"location": "errands", "hour": 15}
+        params={"location": "unknown", "hour": 15}
     )
     ids = [n["_id"] for n in res.json()]
     full_delete(note_id)
@@ -92,8 +92,9 @@ def test_manual_metadata_override():
     notes = client.get("/notes/").json()
     note = next(n for n in notes if n["_id"] == note_id)
     full_delete(note_id)
+    home = next(p for p in client.get("/places/").json() if p["kind"] == "home")
     assert note["category"] == "task"
-    assert "home" in note["contexts"]
+    assert home["id"] in note["contexts"]
 
 
 def test_remind_on_date_past_time_moves_to_tomorrow():

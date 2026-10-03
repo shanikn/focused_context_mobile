@@ -15,7 +15,12 @@ from notepad import (  # noqa: E402
 )
 from agents.pipeline import (  # noqa: E402
     enrich_note, full_delete, process_feedback,
-    get_reminders, process_all_notes, reminder_time_source
+    get_reminders, process_all_notes, reminder_time_source,
+    reenrich_user_notes, untag_place,
+)
+from places import (  # noqa: E402
+    create_place, delete_place, get_places, place_to_dict, resolve_place,
+    update_place,
 )
 from auth import get_user_id  # noqa: E402
 
@@ -216,9 +221,69 @@ def get_reminders_endpoint(
     authorization: Optional[str] = Header(None),
 ):
     user_id = require_user_id(authorization)
-    query = f"{location} {hour}" if hour is not None else location
+    # location is a place name or id; search semantically by the name
+    place = resolve_place(user_id, location)
+    label = place.name if place else location
+    query = f"{label} {hour}" if hour is not None else label
     notes = get_reminders(query, location, hour, minute, user_id)
     return [note_to_dict(n) for n in notes]
+
+
+# ---- places: names (and optional keywords) only; coordinates stay on the phone ----
+
+class PlaceRequest(BaseModel):
+    name: str
+    keywords: list[str] = []
+
+
+class PlaceUpdate(BaseModel):
+    name: Optional[str] = None
+    keywords: Optional[list[str]] = None
+
+
+@app.get("/places/")
+def list_places(authorization: Optional[str] = Header(None)):
+    user_id = require_user_id(authorization)
+    return [place_to_dict(p) for p in get_places(user_id)]
+
+
+@app.post("/places/")
+def add_place(request: PlaceRequest, authorization: Optional[str] = Header(None)):
+    user_id = require_user_id(authorization)
+    try:
+        place = create_place(user_id, request.name, request.keywords)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    # existing notes may belong to the new place
+    reenrich_user_notes(user_id)
+    return place_to_dict(place)
+
+
+@app.put("/places/{place_id}")
+def change_place(
+    place_id: str, request: PlaceUpdate,
+    authorization: Optional[str] = Header(None),
+):
+    user_id = require_user_id(authorization)
+    try:
+        found = update_place(user_id, place_id, request.name, request.keywords)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    if not found:
+        raise HTTPException(status_code=404, detail="Place not found")
+    # notes are tagged by id, so a rename changes nothing; new keywords may
+    if request.keywords is not None:
+        reenrich_user_notes(user_id)
+    return place_to_dict(resolve_place(user_id, place_id))
+
+
+@app.delete("/places/{place_id}")
+def remove_place(place_id: str, authorization: Optional[str] = Header(None)):
+    user_id = require_user_id(authorization)
+    if not delete_place(user_id, place_id):
+        raise HTTPException(status_code=404, detail="Place not found")
+    untag_place(user_id, place_id)
+    return {"message": "place deleted"}
 
 
 # submit feedback on a note

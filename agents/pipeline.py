@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timedelta
 from agents.ingestion import ingest_note
 from agents.categorizer import (
-    categorize, infer_location, infer_time,
+    categorize, infer_place, infer_time,
     infer_date, default_time_for,
 )
 from agents.relevance import get_relevant_notes, collection
@@ -11,6 +11,7 @@ from notepad import (
     save_note, update_note, delete_note, Note, get_all_notes, dict_to_note
 )
 from typing import Optional
+from places import get_places
 
 logger = logging.getLogger(__name__)
 
@@ -80,28 +81,33 @@ def process_new_notes(note: Note):
     enrich_note(note)
 
 
-def enrich_note(note: Note):
-    now = datetime.now()
+def compute_enrichment(note: Note, places: list, now: datetime) -> dict:
+    """What the AI agents infer for a note, without saving anything.
+    Locations are the user's place ids; explicit user choices are kept."""
     if note.category_explicit:
         category = note.category
     else:
         category = categorize(note.content)
-    contexts = []
+    place = None
     if note.location_explicit and note.location_value:
-        location = note.location_value
-    else:
-        location = infer_location(note.content, category)
-    if location:
-        contexts.append(location)
+        # accepts a place id or (older clients) a place name
+        place = next(
+            (p for p in places if p.id == note.location_value), None
+        ) or next(
+            (p for p in places if p.name.lower() == note.location_value.lower()), None
+        )
+    if place is None:
+        place = infer_place(note.content, places)
+    contexts = [place.id] if place else []
     # use manual hour override if set, otherwise infer
-    # from content or fall back to location default
+    # from content or fall back to the place's default
     if note.remind_time_explicit and note.remind_at_hour is not None:
         minute = note.remind_at_minute or 0
         time = f"{note.remind_at_hour:02d}:{minute:02d}"
     else:
         time = infer_time(note.content)
         if time is None:
-            time = default_time_for(location)
+            time = default_time_for(place)
     if time is not None:
         contexts.append(time)
     if note.remind_date_explicit and note.remind_on_date is not None:
@@ -111,16 +117,25 @@ def enrich_note(note: Note):
     resolved_date = _adjust_smart_date_for_future(
         resolved_date, time, note, now
     )
-    note.remind_on_date = resolved_date
-    note.category = category
-    note.contexts = contexts
-    logger.info("Category: %s, contexts: %s", category, contexts)
-    update_note(note.id, {
+    explicit_place = note.location_explicit and place is not None
+    return {
         "category": category,
         "contexts": contexts,
-        "location_value": location if note.location_explicit else None,
+        "location_explicit": explicit_place,
+        "location_value": place.id if explicit_place else None,
         "remind_on_date": resolved_date,
-    })
+    }
+
+
+def enrich_note(note: Note):
+    fields = compute_enrichment(note, get_places(note.user_id), datetime.now())
+    note.category = fields["category"]
+    note.contexts = fields["contexts"]
+    note.location_explicit = fields["location_explicit"]
+    note.location_value = fields["location_value"]
+    note.remind_on_date = fields["remind_on_date"]
+    logger.info("Category: %s, contexts: %s", note.category, note.contexts)
+    update_note(note.id, fields)
     # ingest after categorization so ChromaDB gets complete metadata
     ingest_note(note)
 
@@ -154,47 +169,28 @@ def full_delete(note_id: str, user_id: Optional[str] = None) -> bool:
 
 
 def reingest_note(note: Note):
-    """Re-categorize and re-embed an existing note (no save to MongoDB)."""
-    now = datetime.now()
-    if note.category_explicit:
-        category = note.category
-    else:
-        category = categorize(note.content)
-    contexts = []
-    if note.location_explicit and note.location_value:
-        location = note.location_value
-    else:
-        location = infer_location(note.content, category)
-    if location:
-        contexts.append(location)
-    if note.remind_time_explicit and note.remind_at_hour is not None:
-        minute = note.remind_at_minute or 0
-        time = f"{note.remind_at_hour:02d}:{minute:02d}"
-    else:
-        time = infer_time(note.content)
-        if time is None:
-            time = default_time_for(location)
-    if time is not None:
-        contexts.append(time)
-    if note.remind_date_explicit and note.remind_on_date is not None:
-        note.remind_on_date = note.remind_on_date
-    else:
-        note.remind_on_date = infer_date(note.content, now)
-    note.remind_on_date = _adjust_smart_date_for_future(
-        note.remind_on_date, time, note, now
-    )
-    note.category = category
-    note.contexts = contexts
-    update_note(
-        note.id,
-        {
-            "category": category,
-            "contexts": contexts,
-            "location_value": location if note.location_explicit else None,
-            "remind_on_date": note.remind_on_date,
-        }
-    )
-    ingest_note(note)
+    """Re-categorize, re-tag and re-embed an existing note."""
+    enrich_note(note)
+
+
+def reenrich_user_notes(user_id: Optional[str]):
+    """Re-tag a user's notes after their places changed. Notes with a
+    location the user picked by hand keep it."""
+    for doc in get_all_notes(user_id=user_id):
+        note = dict_to_note(doc)
+        if not note.location_explicit:
+            enrich_note(note)
+
+
+def untag_place(user_id: Optional[str], place_id: str):
+    """A place was deleted: drop it from the user's notes and re-tag them."""
+    for doc in get_all_notes(user_id=user_id):
+        note = dict_to_note(doc)
+        if place_id in note.contexts or note.location_value == place_id:
+            if note.location_value == place_id:
+                note.location_explicit = False
+                note.location_value = None
+            enrich_note(note)
 
 
 def process_all_notes():

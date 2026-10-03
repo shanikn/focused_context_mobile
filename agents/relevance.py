@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from notepad import dict_to_note, get_note_by_id, get_all_notes  # noqa: E402
 from agents.context import get_location_bucket  # noqa: E402
+from places import get_places  # noqa: E402
 from agents.ranking_policy import score, is_on_cooldown  # noqa: E402
 from agents.embedding_model import get_embedding_model  # noqa: E402
 
@@ -32,19 +33,16 @@ def _minutes_diff(time_str, current_hour, current_minute):
         return 9999
 
 
-ALL_LOCATIONS = {"home", "uni", "work", "errands"}
-
-
 def _is_due_today(note, today_str):
     """Notes with no date are always eligible; dated notes only surface on that date."""
     return note.remind_on_date is None or note.remind_on_date == today_str
 
 
-def _has_conflicting_location(note, location_bucket):
-    """True if note has a different location than requested."""
+def _has_conflicting_location(note, location_bucket, place_ids):
+    """True if note is tagged with a different one of the user's places."""
     if location_bucket == "unknown":
         return False
-    note_locs = ALL_LOCATIONS.intersection(note.contexts)
+    note_locs = place_ids.intersection(note.contexts)
     if not note_locs:
         return False  # no location = location-neutral
     return location_bucket not in note_locs
@@ -70,7 +68,9 @@ def get_relevant_notes(
     today_str = now.strftime("%Y-%m-%d")
     current_hour = hour if hour is not None else now.hour
     current_minute = minute if minute is not None else now.minute
-    location_bucket = get_location_bucket(location)
+    places = get_places(user_id)
+    place_ids = {p.id for p in places}
+    location_bucket = get_location_bucket(location, places)
 
     # when a specific location is selected, use direct MongoDB lookup
     if location_bucket != "unknown":
@@ -122,7 +122,7 @@ def get_relevant_notes(
         and x.reminders_enabled
         and not is_on_cooldown(x)
         and _is_due_today(x, today_str)
-        and not _has_conflicting_location(x, location_bucket)
+        and not _has_conflicting_location(x, location_bucket, place_ids)
     ]
     ranked = sorted(
         filtered,
@@ -141,7 +141,9 @@ def get_context_reminders(
     today_str = now.strftime("%Y-%m-%d")
     current_hour = hour if hour is not None else now.hour
     current_minute = minute if minute is not None else now.minute
-    location_bucket = get_location_bucket(location)
+    places = get_places(user_id)
+    place_ids = {p.id for p in places}
+    location_bucket = get_location_bucket(location, places)
 
     all_docs = get_all_notes(user_id=user_id)
     notes = [dict_to_note(d) for d in all_docs]
@@ -151,7 +153,7 @@ def get_context_reminders(
         and n.reminders_enabled
         and not is_on_cooldown(n)
         and _is_due_today(n, today_str)
-        and not _has_conflicting_location(n, location_bucket)
+        and not _has_conflicting_location(n, location_bucket, place_ids)
     ]
 
     with_bonus = [

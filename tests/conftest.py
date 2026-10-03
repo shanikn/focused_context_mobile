@@ -15,6 +15,8 @@ os.environ["CHROMA_PATH"] = TEST_CHROMA_PATH
 shutil.rmtree(TEST_CHROMA_PATH, ignore_errors=True)
 
 from notepad import MONGO_DB_NAME, notes_collection  # noqa: E402
+from places import places_collection  # noqa: E402
 
 assert MONGO_DB_NAME == "contextmind_test"
 notes_collection.delete_many({})
+places_collection.delete_many({})

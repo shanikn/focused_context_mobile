@@ -4,6 +4,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agents.context import (  # noqa: E402
     get_time_bucket, get_location_bucket, get_context
 )
+from places import Place  # noqa: E402
 
 
 # time tests
@@ -28,14 +29,28 @@ def test_night():
 
 
 # location tests
-def test_valid_location():
-    assert get_location_bucket("home") == "home"
+PLACES = [
+    Place(id="p-home", user_id=None, name="Home", kind="home"),
+    Place(id="p-gym", user_id=None, name="Gym"),
+]
+
+
+def test_location_by_name_gives_place_id():
+    assert get_location_bucket("home", PLACES) == "p-home"
+    assert get_location_bucket("GYM", PLACES) == "p-gym"
+
+
+def test_location_by_id():
+    assert get_location_bucket("p-gym", PLACES) == "p-gym"
 
 
 def test_invalid_location():
-    assert get_location_bucket("Jupyter") == "unknown"
+    assert get_location_bucket("Jupyter", PLACES) == "unknown"
+    assert get_location_bucket("errands", PLACES) == "unknown"
+    assert get_location_bucket("unknown", PLACES) == "unknown"
 
 
 # combination test
 def test_context():
-    assert get_context("home", 9) == "home + morning"
+    assert get_context("home", 9, PLACES) == "Home + morning"
+    assert get_context("Jupyter", 9, PLACES) == "unknown + morning"
