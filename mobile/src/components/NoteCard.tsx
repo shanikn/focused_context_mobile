@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
 import { Note } from "../types/notes";
+import { reminderLabel } from "../lib/noteLabels";
 
 const CATEGORY_COLORS: Record<string, string> = {
   task: "#1976D2",
@@ -24,21 +25,8 @@ export default function NoteCard({ note, onPress, onDelete }: NoteCardProps) {
   const categoryColor = CATEGORY_COLORS[note.category] || CATEGORY_COLORS.uncategorized;
   const locationLabel =
     note.contexts.find((item) => typeof item === "string" && LOCATION_CONTEXTS.has(item)) ?? null;
-  const manualTimeLabel =
-    note.remind_at_hour !== null
-      ? `${String(note.remind_at_hour).padStart(2, "0")}:${String(
-          note.remind_at_minute ?? 0
-        ).padStart(2, "0")}`
-      : null;
-  const inferredTimeLabel =
-    manualTimeLabel ??
-    note.contexts.find((item) => typeof item === "string" && /^\d{2}:\d{2}$/.test(item)) ??
-    null;
-  const reminderLabel = !note.reminders_enabled
-    ? "Alerts off"
-    : note.remind_on_date || inferredTimeLabel
-      ? `Alerts ${note.remind_on_date ? `on ${note.remind_on_date}` : ""}${note.remind_on_date && inferredTimeLabel ? " " : ""}${inferredTimeLabel ? `at ${inferredTimeLabel}` : ""}`.trim()
-      : "Smart alerts on";
+  const alertsLabel = reminderLabel(note);
+  const alertsOff = note.reminders_enabled === false;
 
   const handleLongPress = () => {
     Alert.alert("Delete Note", "Are you sure you want to delete this note?", [
@@ -81,8 +69,8 @@ export default function NoteCard({ note, onPress, onDelete }: NoteCardProps) {
             {note.list_name && note.list_name !== "General" && (
               <Text style={styles.listName}>{note.list_name}</Text>
             )}
-            <Text style={[styles.reminderBadge, !note.reminders_enabled && styles.reminderBadgeMuted]}>
-              {reminderLabel}
+            <Text style={[styles.reminderBadge, alertsOff && styles.reminderBadgeMuted]}>
+              {alertsLabel}
             </Text>
           </View>
         </View>

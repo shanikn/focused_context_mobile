@@ -111,7 +111,9 @@ def create_note(
 @app.get("/notes/")
 def list_notes(authorization: Optional[str] = Header(None)):
     user_id = require_user_id(authorization)
-    return get_all_notes(user_id=user_id)
+    # round-trip through Note so older documents get defaults for fields
+    # added later (e.g. reminders_enabled=True) instead of omitting them
+    return [note_to_dict(dict_to_note(d)) for d in get_all_notes(user_id=user_id)]
 
 
 # delete note from MongoDB and ChromaDB

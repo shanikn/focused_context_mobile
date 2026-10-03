@@ -193,3 +193,48 @@ def test_cleared_reminder_time_goes_back_to_smart_time():
     assert note["remind_at_hour"] is None
     assert "14:30" not in note["contexts"]
     assert "09:00" in note["contexts"]
+
+
+def test_new_note_with_inferred_time_has_alerts_on():
+    res = client.post("/notes/", json={"content": "remind me at 17:53 that I'm at home"})
+    note_id = res.json()["id"]
+    note = _get_note(note_id)
+
+    full_delete(note_id)
+    assert "17:53" in note["contexts"]
+    assert note["reminders_enabled"] is True
+
+
+def test_list_notes_fills_defaults_for_older_notes():
+    # notes saved before reminders_enabled / the explicit flags existed
+    # have no such fields in MongoDB
+    from notepad import notes_collection
+    # create and delete a note just to learn the API's user id
+    created = client.post("/notes/", json={"content": "placeholder"}).json()["id"]
+    owner = notes_collection.find_one({"_id": created})["user_id"]
+    full_delete(created)
+
+    legacy_id = "legacy-note-17-53"
+    notes_collection.insert_one({
+        "_id": legacy_id,
+        "content": "remind me at 17:53 that im at home",
+        "created_at": datetime(2026, 3, 15, 13, 56),
+        "category": "reminder",
+        "contexts": ["home", "17:53"],
+        "shown_count": 0,
+        "dismissed_count": 0,
+        "useful_count": 0,
+        "never_show": False,
+        "last_shown": None,
+        "cooldown_until": None,
+        "remind_at_hour": None,
+        "remind_on_date": None,
+        "user_id": owner,
+    })
+    note = _get_note(legacy_id)
+    notes_collection.delete_one({"_id": legacy_id})
+
+    assert note["reminders_enabled"] is True
+    assert note["remind_time_explicit"] is False
+    assert note["category_explicit"] is False
+    assert note["contexts"] == ["home", "17:53"]
