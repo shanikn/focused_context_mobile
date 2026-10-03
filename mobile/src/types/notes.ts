@@ -24,4 +24,7 @@ export interface Note {
     remind_at_minute: number | null;
     remind_on_date: string | null;
     user_id: string | null;
+    // from GET /notes/: where the reminder time comes from; only explicit and
+    // text times get an exact alarm. Missing on an older backend.
+    reminder_time_source?: "explicit" | "text" | "default" | null;
 }

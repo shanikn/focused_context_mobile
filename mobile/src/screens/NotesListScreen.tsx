@@ -19,6 +19,7 @@ import { Note } from "../types/notes";
 import NoteCard from "../components/NoteCard";
 import { NotesStackParamList } from "../../App";
 import { addCustomList, getCustomLists, removeCustomList } from "../lib/listPrefs";
+import { syncScheduledReminders } from "../services/scheduledReminders";
 
 type Nav = NativeStackNavigationProp<NotesStackParamList, "NotesList">;
 
@@ -71,6 +72,7 @@ export default function NotesListScreen() {
     try {
       await deleteNote(noteId);
       setNotes((prev) => prev.filter((n) => n._id !== noteId));
+      syncScheduledReminders();
     } catch {
       Alert.alert("Error", "Failed to delete note");
     }
@@ -136,6 +138,7 @@ export default function NotesListScreen() {
                         try {
                           await Promise.all(listNotes.map((n) => deleteNote(n._id)));
                           setNotes((prev) => prev.filter((n) => n.list_name !== name));
+                          syncScheduledReminders();
                           if (listNotes.length === 0) {
                             const nextLists = await removeCustomList(name);
                             setCustomLists(nextLists);

@@ -15,6 +15,7 @@ import { useNavigation, useRoute, useFocusEffect, RouteProp } from "@react-navig
 import { createNote, updateNote, getNotes } from "../api/notes";
 import { NotesStackParamList } from "../../App";
 import { getCustomLists } from "../lib/listPrefs";
+import { syncScheduledReminders } from "../services/scheduledReminders";
 
 type RouteParams = RouteProp<NotesStackParamList, "AddEditNote">;
 const CATEGORY_OPTIONS = ["task", "errand", "idea", "reminder", "scheduled", "uncategorized"] as const;
@@ -151,6 +152,9 @@ export default function AddEditNoteScreen() {
           reminderDate || undefined
         );
       }
+      // reschedule exact alarms with the new time/date; not awaited so
+      // the screen closes right away
+      syncScheduledReminders();
       navigation.goBack();
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to save note");

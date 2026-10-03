@@ -8,6 +8,7 @@ import {
   markNotifiedInSlot,
   wasNotifiedInSlot,
 } from "../lib/reminderPrefs";
+import { getScheduledNoteIds } from "./scheduledReminders";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -127,9 +128,15 @@ export async function checkAndNotifyReminders(
   const candidates = options.onArrival
     ? reminders.slice(0, MAX_ARRIVAL_NOTES)
     : reminders;
+  // polling is the fallback: notes with an exact scheduled alarm are skipped
+  // on the timed path so they don't notify twice
+  const scheduledIds = options.onArrival ? new Set<string>() : await getScheduledNoteIds();
 
   for (const note of candidates) {
     if (!options.onArrival && !isDueNow(note, now)) {
+      continue;
+    }
+    if (scheduledIds.has(note._id)) {
       continue;
     }
 

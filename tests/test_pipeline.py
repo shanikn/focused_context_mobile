@@ -76,3 +76,20 @@ def test_full_delete():
     ingest_note(note)
     full_delete(note.id)
     assert get_note_by_id(note.id) is None
+
+
+def test_reminder_time_source():
+    from agents.pipeline import reminder_time_source
+
+    explicit = Note(content="call mom", contexts=["14:30"],
+                    remind_time_explicit=True, remind_at_hour=14, remind_at_minute=30)
+    written = Note(content="remind me at 17:53 that im at home", contexts=["home", "17:53"])
+    fuzzy = Note(content="go for an evening jog", contexts=["18:00"])
+    default = Note(content="do the laundry", contexts=["home", "09:00"])
+    no_time = Note(content="random idea", contexts=[])
+
+    assert reminder_time_source(explicit) == "explicit"
+    assert reminder_time_source(written) == "text"
+    assert reminder_time_source(fuzzy) == "text"
+    assert reminder_time_source(default) == "default"
+    assert reminder_time_source(no_time) is None

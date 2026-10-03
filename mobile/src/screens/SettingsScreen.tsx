@@ -37,6 +37,7 @@ import {
 import { GrantedPermissions, locationStatus } from "../lib/locationPermissionFlow";
 import { getGrantedPermissions } from "../services/locationPermissions";
 import { syncGeofencing } from "../services/geofence";
+import { clearReminderSchedule, syncScheduledReminders } from "../services/scheduledReminders";
 import {
   LocationPermissionModal,
   useLocationPermissionFlow,
@@ -148,6 +149,8 @@ export default function SettingsScreen() {
             (p) => p.providerId === "google.com"
           );
           await signOut(auth);
+          // the next user mustn't get this user's alarms
+          clearReminderSchedule().catch(() => {});
           if (!usedGoogle) {
             return;
           }
@@ -177,8 +180,9 @@ export default function SettingsScreen() {
         );
       }
     }
-    // turning notifications off stops geofencing; turning them on restarts it
+    // turning notifications off stops geofencing and exact alarms; on restarts them
     await syncGeofencing();
+    await syncScheduledReminders();
   };
 
   const handleSelectLocation = async (nextLocation: LocationBucket) => {

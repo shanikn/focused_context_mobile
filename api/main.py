@@ -15,7 +15,7 @@ from notepad import (  # noqa: E402
 )
 from agents.pipeline import (  # noqa: E402
     enrich_note, full_delete, process_feedback,
-    get_reminders, process_all_notes
+    get_reminders, process_all_notes, reminder_time_source
 )
 from auth import get_user_id  # noqa: E402
 
@@ -113,7 +113,13 @@ def list_notes(authorization: Optional[str] = Header(None)):
     user_id = require_user_id(authorization)
     # round-trip through Note so older documents get defaults for fields
     # added later (e.g. reminders_enabled=True) instead of omitting them
-    return [note_to_dict(dict_to_note(d)) for d in get_all_notes(user_id=user_id)]
+    notes = [dict_to_note(d) for d in get_all_notes(user_id=user_id)]
+    # tells the phone which times get an exact alarm (explicit/text) and
+    # which are location defaults left to the location-aware polling
+    return [
+        {**note_to_dict(n), "reminder_time_source": reminder_time_source(n)}
+        for n in notes
+    ]
 
 
 # delete note from MongoDB and ChromaDB

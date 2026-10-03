@@ -15,6 +15,22 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+def reminder_time_source(note: Note) -> Optional[str]:
+    """Where a note's reminder time comes from:
+    "explicit" (set by the user), "text" (written in the note, e.g. "at 17:53"
+    or "evening"), "default" (the location's default time), or None.
+    The phone schedules exact alarms only for explicit and text times."""
+    if note.remind_time_explicit and note.remind_at_hour is not None:
+        return "explicit"
+    time = next(
+        (c for c in note.contexts if isinstance(c, str) and _parse_time_text(c)),
+        None,
+    )
+    if time is None:
+        return None
+    return "text" if infer_time(note.content) == time else "default"
+
+
 def _parse_time_text(time_text: Optional[str]) -> Optional[tuple[int, int]]:
     if not time_text or ":" not in time_text:
         return None

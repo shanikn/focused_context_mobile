@@ -238,3 +238,14 @@ def test_list_notes_fills_defaults_for_older_notes():
     assert note["remind_time_explicit"] is False
     assert note["category_explicit"] is False
     assert note["contexts"] == ["home", "17:53"]
+
+
+def test_list_notes_reports_reminder_time_source():
+    written = client.post("/notes/", json={"content": "remind me at 17:53 that im at home"}).json()["id"]
+    default = client.post("/notes/", json={"content": "do the laundry"}).json()["id"]
+    by_id = {n["_id"]: n for n in client.get("/notes/").json()}
+
+    full_delete(written)
+    full_delete(default)
+    assert by_id[written]["reminder_time_source"] == "text"
+    assert by_id[default]["reminder_time_source"] == "default"
