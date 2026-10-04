@@ -3,10 +3,11 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
 import { Note } from "../types/notes";
-import { locationLabel as placeLabel, reminderLabel } from "../lib/noteLabels";
 import { ServerPlace } from "../lib/userPlaces";
-import { CategoryColors, colorFor, textColorFor } from "../lib/categoryColors";
-
+import { CategoryColors } from "../lib/categoryColors";
+import { noteCardInfo } from "../lib/noteCardInfo";
+import { IconTile } from "./ui";
+import { colors, fonts, radius, type } from "../theme";
 
 interface NoteCardProps {
   note: Note;
@@ -17,12 +18,9 @@ interface NoteCardProps {
 }
 
 export default function NoteCard({ note, onPress, onDelete, places, categoryColors }: NoteCardProps) {
-  const categoryColor = colorFor(note.category, categoryColors);
-  const locationLabel = placeLabel(note, places);
-  const alertsLabel = reminderLabel(note);
-  const alertsOff = note.reminders_enabled === false;
+  const info = noteCardInfo(note, places, categoryColors);
 
-  const handleLongPress = () => {
+  const confirmDelete = () => {
     Alert.alert("Delete Note", "Are you sure you want to delete this note?", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: onDelete },
@@ -30,48 +28,63 @@ export default function NoteCard({ note, onPress, onDelete, places, categoryColo
   };
 
   const renderRightActions = () => (
-    <TouchableOpacity style={styles.deleteAction} onPress={handleLongPress}>
-      <Ionicons name="trash-outline" size={22} color="#fff" />
+    <TouchableOpacity
+      style={styles.deleteAction}
+      onPress={confirmDelete}
+      accessibilityRole="button"
+      accessibilityLabel="Delete note"
+    >
+      <Ionicons name="trash-outline" size={22} color={colors.onPrimary} />
       <Text style={styles.deleteActionText}>Delete</Text>
     </TouchableOpacity>
   );
 
   return (
-    <Swipeable
-      renderRightActions={renderRightActions}
-      overshootRight={false}
-      rightThreshold={40}
-      containerStyle={styles.swipeContainer}
-    >
-      <TouchableOpacity
-        style={styles.card}
-        onPress={onPress}
-        onLongPress={handleLongPress}
-      >
-        <View style={[styles.categoryStripe, { backgroundColor: categoryColor }]} />
+    <Swipeable renderRightActions={renderRightActions} overshootRight={false} rightThreshold={40}>
+      <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={confirmDelete}>
+        <IconTile icon={info.icon} backgroundColor={info.tileColor} iconColor={info.tileIconColor} />
+
         <View style={styles.body}>
-          <Text style={styles.content} numberOfLines={3}>
+          {/* writingDirection auto: Hebrew notes read right-to-left inside the LTR layout */}
+          <Text style={[type.body, styles.content]} numberOfLines={2}>
             {note.content}
           </Text>
           <View style={styles.meta}>
-            <Text
-              style={[
-                styles.categoryBadge,
-                { backgroundColor: categoryColor, color: textColorFor(categoryColor) },
-              ]}
-            >
-              {note.category}
+            <Text style={[type.caption, styles.category, { color: info.categoryTextColor }]}>
+              {info.categoryLabel}
             </Text>
-            {locationLabel && (
-              <Text style={styles.contextBadge}>{locationLabel}</Text>
+            {info.placeName && (
+              <>
+                <Text style={type.caption}> · </Text>
+                <Ionicons name="location-outline" size={13} color={colors.textMuted} />
+                <Text style={type.caption} numberOfLines={1}>
+                  {" "}
+                  {info.placeName}
+                </Text>
+              </>
             )}
-            {note.list_name && note.list_name !== "General" && (
-              <Text style={styles.listName}>{note.list_name}</Text>
+            {info.folderName && (
+              <Text style={type.caption} numberOfLines={1}>
+                {" · "}
+                {info.folderName}
+              </Text>
             )}
-            <Text style={[styles.reminderBadge, alertsOff && styles.reminderBadgeMuted]}>
-              {alertsLabel}
-            </Text>
           </View>
+        </View>
+
+        <View style={styles.trailing}>
+          {info.trailing.kind === "time" && <Text style={styles.time}>{info.trailing.time}</Text>}
+          {info.trailing.kind === "smart" && (
+            <Ionicons name="sparkles-outline" size={20} color={colors.primary} accessibilityLabel="Smart alerts" />
+          )}
+          {info.trailing.kind === "off" && (
+            <Ionicons
+              name="notifications-off-outline"
+              size={20}
+              color={colors.textMuted}
+              accessibilityLabel="Alerts off"
+            />
+          )}
         </View>
       </TouchableOpacity>
     </Swipeable>
@@ -79,78 +92,36 @@ export default function NoteCard({ note, onPress, onDelete, places, categoryColo
 }
 
 const styles = StyleSheet.create({
-  swipeContainer: {
-    marginHorizontal: 16,
-    marginVertical: 5,
-  },
   card: {
     flexDirection: "row",
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    overflow: "hidden",
-  },
-  categoryStripe: {
-    width: 5,
-  },
-  body: {
-    flex: 1,
-    padding: 14,
-  },
-  content: {
-    fontSize: 15,
-    color: "#333",
-    lineHeight: 21,
-  },
-  meta: {
-    flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
-    gap: 8,
+    gap: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.noteCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
-  categoryBadge: {
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "capitalize",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    overflow: "hidden",
-  },
-  listName: {
-    fontSize: 12,
-    color: "#999",
-  },
-  contextBadge: {
-    fontSize: 12,
-    color: "#546E7A",
-    fontWeight: "600",
-    textTransform: "capitalize",
-  },
-  reminderBadge: {
-    fontSize: 12,
-    color: "#2E7D32",
-    fontWeight: "600",
-  },
-  reminderBadgeMuted: {
-    color: "#999",
+  body: { flex: 1 },
+  content: { writingDirection: "auto" },
+  meta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", marginTop: 2 },
+  category: { fontFamily: fonts.bodySemi },
+  trailing: { minWidth: 44, alignItems: "flex-end", justifyContent: "center" },
+  time: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 17,
+    color: colors.text,
+    fontVariant: ["tabular-nums"],
   },
   deleteAction: {
     width: 96,
-    borderRadius: 10,
-    backgroundColor: "#d32f2f",
+    borderRadius: radius.noteCard,
+    backgroundColor: colors.danger,
     justifyContent: "center",
     alignItems: "center",
     gap: 4,
     marginLeft: 8,
   },
-  deleteActionText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
+  deleteActionText: { color: colors.onPrimary, fontFamily: fonts.bodySemi, fontSize: 12 },
 });

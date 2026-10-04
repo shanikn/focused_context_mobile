@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
 import { BricolageGrotesque_700Bold } from "@expo-google-fonts/bricolage-grotesque/700Bold";
 import { Figtree_400Regular } from "@expo-google-fonts/figtree/400Regular";
@@ -21,6 +22,7 @@ import { checkAndNotifyReminders } from "./src/services/reminderNotifier";
 import { syncGeofencing } from "./src/services/geofence";
 import { syncScheduledReminders } from "./src/services/scheduledReminders";
 import { Note } from "./src/types/notes";
+import { colors, fonts } from "./src/theme";
 
 export type NotesStackParamList = {
   NotesList: undefined;
@@ -37,7 +39,7 @@ function NotesStack() {
       <Stack.Screen
         name="NotesList"
         component={NotesListScreen}
-        options={{ title: "My Notes" }}
+        options={{ title: "My Notes", headerShown: false }}
       />
       <Stack.Screen
         name="AddEditNote"
@@ -50,18 +52,42 @@ function NotesStack() {
   );
 }
 
+const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  Notes: "document-text-outline",
+  Settings: "options-outline",
+};
+
 function MainTabs() {
+  const insets = useSafeAreaInsets();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        tabBarIcon: ({ color, size }) => {
-          let iconName: keyof typeof Ionicons.glyphMap = "document-text";
-          if (route.name === "Notes") iconName = "document-text";
-          else if (route.name === "Settings") iconName = "settings";
-          return <Ionicons name={iconName} size={size} color={color} />;
+        // active tab: a light green pill behind the icon
+        tabBarIcon: ({ focused, color }) => (
+          <View
+            style={{
+              width: 60,
+              height: 30,
+              borderRadius: 15,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: focused ? colors.primarySoft : "transparent",
+            }}
+          >
+            <Ionicons name={TAB_ICONS[route.name] ?? "ellipse-outline"} size={22} color={color} />
+          </View>
+        ),
+        tabBarActiveTintColor: colors.primaryDark,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarLabelStyle: { fontFamily: fonts.bodySemi, fontSize: 12 },
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+          borderTopWidth: 1,
+          height: 76 + insets.bottom,
+          paddingTop: 8,
+          paddingBottom: 8 + insets.bottom,
         },
-        tabBarActiveTintColor: "#2E7D32",
-        tabBarInactiveTintColor: "#999",
       })}
     >
       <Tab.Screen
@@ -147,9 +173,11 @@ function RootNavigator() {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

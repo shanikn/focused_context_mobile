@@ -1,8 +1,7 @@
 import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
-  FlatList,
-  ScrollView,
+  SectionList,
   Text,
   TouchableOpacity,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
   Modal,
   TextInput,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,49 +19,63 @@ import { Note } from "../types/notes";
 import NoteCard from "../components/NoteCard";
 import { NotesStackParamList } from "../../App";
 import { addCustomList, getCustomLists, removeCustomList } from "../lib/listPrefs";
-import { folderTabs } from "../lib/folderOrder";
+import { ALL, GENERAL, folderTabs } from "../lib/folderOrder";
+import { groupNotes } from "../lib/noteSections";
+import { currentPlaceLabel } from "../lib/noteCardInfo";
+import { getReminderLocation } from "../lib/reminderPrefs";
 import { syncScheduledReminders } from "../services/scheduledReminders";
 import { loadPlaces } from "../services/placesStore";
 import { ServerPlace } from "../lib/userPlaces";
 import { CategoryColors, DEFAULT_CATEGORY_COLORS, getCategoryColors } from "../lib/categoryColors";
+import { Chip, ChipRow, SectionLabel } from "../components/ui";
+import { colors, fonts, MIN_TOUCH_TARGET, radius, spacing, type } from "../theme";
 
 type Nav = NativeStackNavigationProp<NotesStackParamList, "NotesList">;
+
+const FAB_SIZE = 56;
+const FAB_MARGIN = 16;
 
 export default function NotesListScreen() {
   const navigation = useNavigation<Nav>();
   const [notes, setNotes] = useState<Note[]>([]);
   const [places, setPlaces] = useState<ServerPlace[]>([]);
+  const [currentLocation, setCurrentLocation] = useState<string | null>(null);
   const [categoryColors, setCategoryColors] = useState<CategoryColors>(DEFAULT_CATEGORY_COLORS);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState("All");
+  const [activeTab, setActiveTab] = useState(ALL);
   const [customLists, setCustomLists] = useState<string[]>([]);
   const [showCreateListModal, setShowCreateListModal] = useState(false);
   const [newListName, setNewListName] = useState("");
 
-  const listNames = useMemo(() => {
-    // All, then General, then the other folders alphabetically
-    return folderTabs(notes, customLists);
-  }, [notes, customLists]);
+  // All, then General, then the other folders alphabetically (no re-sorting here)
+  const listNames = useMemo(() => folderTabs(notes, customLists), [notes, customLists]);
 
   const filteredNotes = useMemo(() => {
-    if (activeTab === "All") return notes;
-    return notes.filter((n) => (n.list_name || "General") === activeTab);
+    if (activeTab === ALL) return notes;
+    return notes.filter((n) => (n.list_name || GENERAL) === activeTab);
   }, [notes, activeTab]);
+
+  const sections = useMemo(
+    () => groupNotes(filteredNotes, new Date()).map((s) => ({ ...s, data: s.notes })),
+    [filteredNotes]
+  );
 
   const fetchNotes = useCallback(async () => {
     try {
-      const [data, savedLists, userPlaces, colors] = await Promise.all([
+      const [data, savedLists, userPlaces, colorsByCategory, location] = await Promise.all([
         getNotes(),
         getCustomLists(),
         loadPlaces().catch(() => []),
         getCategoryColors().catch(() => DEFAULT_CATEGORY_COLORS),
+        getReminderLocation().catch(() => null),
       ]);
       setNotes(data);
       setPlaces(userPlaces);
-      setCategoryColors(colors);
+      setCategoryColors(colorsByCategory);
       setCustomLists(savedLists);
-    } catch (err: any) {
+      setCurrentLocation(location);
+    } catch {
       Alert.alert("Error", "Failed to load notes");
     } finally {
       setLoading(false);
@@ -91,6 +105,32 @@ export default function NotesListScreen() {
     }
   };
 
+  const handleDeleteFolder = (name: string) => {
+    if (name === ALL || name === GENERAL) return;
+    const listNotes = notes.filter((n) => n.list_name === name);
+    Alert.alert("Delete List", `Delete "${name}" and its ${listNotes.length} note(s)?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await Promise.all(listNotes.map((n) => deleteNote(n._id)));
+            setNotes((prev) => prev.filter((n) => n.list_name !== name));
+            syncScheduledReminders();
+            if (listNotes.length === 0) {
+              const nextLists = await removeCustomList(name);
+              setCustomLists(nextLists);
+            }
+            setActiveTab(ALL);
+          } catch {
+            Alert.alert("Error", "Failed to delete list");
+          }
+        },
+      },
+    ]);
+  };
+
   const handleCreateList = async () => {
     const trimmed = newListName.trim();
     if (!trimmed) {
@@ -114,93 +154,87 @@ export default function NotesListScreen() {
     }
   };
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2E7D32" />
-      </View>
-    );
-  }
+  const placeLabel = currentPlaceLabel(currentLocation, places);
 
   return (
-    <View style={styles.container}>
-      {notes.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.tabBar}
-          contentContainerStyle={styles.tabBarContent}
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <View style={styles.header}>
+        <Text style={[type.screenTitle, styles.title]} numberOfLines={1}>
+          My Notes
+        </Text>
+        <TouchableOpacity
+          style={styles.placeChip}
+          onPress={() => navigation.getParent()?.navigate("Settings")}
+          accessibilityRole="button"
+          accessibilityLabel={`${placeLabel}. Open Settings`}
         >
-          {listNames.map((name) => (
-            <TouchableOpacity
-              key={name}
-              style={[styles.tab, activeTab === name && styles.tabActive]}
-              onPress={() => setActiveTab(name)}
-              onLongPress={() => {
-                if (name === "All" || name === "General") return;
-                const listNotes = notes.filter((n) => n.list_name === name);
-                Alert.alert(
-                  "Delete List",
-                  `Delete "${name}" and its ${listNotes.length} note(s)?`,
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Delete",
-                      style: "destructive",
-                      onPress: async () => {
-                        try {
-                          await Promise.all(listNotes.map((n) => deleteNote(n._id)));
-                          setNotes((prev) => prev.filter((n) => n.list_name !== name));
-                          syncScheduledReminders();
-                          if (listNotes.length === 0) {
-                            const nextLists = await removeCustomList(name);
-                            setCustomLists(nextLists);
-                          }
-                          setActiveTab("All");
-                        } catch {
-                          Alert.alert("Error", "Failed to delete list");
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-            >
-              <Text style={[styles.tabText, activeTab === name && styles.tabTextActive]}>
-                {name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
+          <Ionicons name="location-outline" size={16} color={colors.primaryDark} />
+          <Text style={styles.placeChipText} numberOfLines={1}>
+            {placeLabel}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={() => setShowCreateListModal(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Create a new folder"
+        >
+          <Ionicons name="folder-outline" size={22} color={colors.text} />
+        </TouchableOpacity>
+      </View>
 
-      {notes.length === 0 ? (
+      {loading ? (
         <View style={styles.center}>
-          <Ionicons name="document-text-outline" size={64} color="#ccc" />
-          <Text style={styles.emptyText}>No notes yet</Text>
-          <Text style={styles.emptyHint}>Tap + to create your first note</Text>
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
-        <FlatList
-          data={filteredNotes}
-          keyExtractor={(item) => item._id}
-          renderItem={({ item }) => (
-            <NoteCard
-              note={item}
-              onPress={() =>
-                navigation.navigate("AddEditNote", {
-                  note: item,
-                })
-              }
-              onDelete={() => handleDelete(item._id)}
-              places={places}
-              categoryColors={categoryColors}
+        <>
+          {notes.length > 0 && (
+            <View style={styles.chips}>
+              <ChipRow scroll style={styles.chipsContent}>
+                {listNames.map((name) => (
+                  <Chip
+                    key={name}
+                    label={name}
+                    selected={activeTab === name}
+                    onPress={() => setActiveTab(name)}
+                    onLongPress={() => handleDeleteFolder(name)}
+                  />
+                ))}
+              </ChipRow>
+            </View>
+          )}
+
+          {notes.length === 0 ? (
+            <View style={styles.center}>
+              <Ionicons name="document-text-outline" size={64} color={colors.border} />
+              <Text style={[type.cardTitle, styles.emptyText]}>No notes yet</Text>
+              <Text style={type.caption}>Tap + to create your first note</Text>
+            </View>
+          ) : (
+            <SectionList
+              sections={sections}
+              keyExtractor={(item) => item._id}
+              stickySectionHeadersEnabled={false}
+              renderSectionHeader={({ section }) => (
+                <SectionLabel title={section.title} style={styles.sectionLabel} />
+              )}
+              renderItem={({ item }) => (
+                <NoteCard
+                  note={item}
+                  onPress={() => navigation.navigate("AddEditNote", { note: item })}
+                  onDelete={() => handleDelete(item._id)}
+                  places={places}
+                  categoryColors={categoryColors}
+                />
+              )}
+              ItemSeparatorComponent={() => <View style={{ height: spacing.noteGap }} />}
+              contentContainerStyle={styles.listContent}
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
             />
           )}
-          contentContainerStyle={{ paddingVertical: 8 }}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-        />
+        </>
       )}
 
       <Modal
@@ -211,19 +245,20 @@ export default function NotesListScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Create New List</Text>
+            <Text style={[type.cardTitle, styles.modalTitle]}>Create New List</Text>
             <TextInput
               style={styles.modalInput}
               placeholder="List name"
+              placeholderTextColor={colors.textMuted}
               value={newListName}
               onChangeText={setNewListName}
               autoFocus
             />
             <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setShowCreateListModal(false)}>
+              <TouchableOpacity style={styles.modalAction} onPress={() => setShowCreateListModal(false)}>
                 <Text style={styles.modalActionSecondary}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleCreateList}>
+              <TouchableOpacity style={styles.modalAction} onPress={handleCreateList}>
                 <Text style={styles.modalActionPrimary}>Create</Text>
               </TouchableOpacity>
             </View>
@@ -232,107 +267,76 @@ export default function NotesListScreen() {
       </Modal>
 
       <TouchableOpacity
-        style={styles.secondaryFab}
-        onPress={() => setShowCreateListModal(true)}
-      >
-        <Ionicons name="folder-open-outline" size={22} color="#2E7D32" />
-      </TouchableOpacity>
-
-      <TouchableOpacity
         style={styles.fab}
         onPress={() =>
           navigation.navigate("AddEditNote", {
-            initialListName: activeTab !== "All" ? activeTab : undefined,
+            initialListName: activeTab !== ALL ? activeTab : undefined,
           })
         }
+        accessibilityRole="button"
+        accessibilityLabel="Add a note"
       >
-        <Ionicons name="add" size={28} color="#fff" />
+        <Ionicons name="add" size={28} color={colors.onPrimary} />
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
-  center: {
-    flex: 1,
-    justifyContent: "center",
+  container: { flex: 1, backgroundColor: colors.background },
+  header: {
+    flexDirection: "row",
     alignItems: "center",
-  },
-  emptyText: {
-    fontSize: 18,
-    color: "#999",
-    marginTop: 12,
-  },
-  emptyHint: {
-    fontSize: 14,
-    color: "#bbb",
-    marginTop: 4,
-  },
-  tabBar: {
-    flexGrow: 0,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  tabBarContent: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
     gap: 8,
+    paddingTop: 16,
+    paddingRight: 16,
+    paddingBottom: 8,
+    paddingLeft: 20,
   },
-  tab: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: "#f0f0f0",
+  title: { flex: 1 },
+  placeChip: {
+    height: MIN_TOUCH_TARGET,
+    borderRadius: radius.chip,
+    paddingHorizontal: 14,
+    backgroundColor: colors.primarySoft,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    maxWidth: 170,
   },
-  tabActive: {
-    backgroundColor: "#2E7D32",
+  placeChipText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.primaryDark, flexShrink: 1 },
+  iconButton: {
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
+    borderRadius: MIN_TOUCH_TARGET / 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  tabText: {
-    fontSize: 14,
-    color: "#666",
-  },
-  tabTextActive: {
-    color: "#fff",
-    fontWeight: "600",
+  chips: { flexGrow: 0, paddingBottom: 4 },
+  chipsContent: { paddingHorizontal: spacing.screen },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 4 },
+  emptyText: { marginTop: 12 },
+  sectionLabel: { marginTop: 12, marginRight: 4, marginBottom: 0, marginLeft: 4, paddingBottom: 8 },
+  listContent: {
+    paddingHorizontal: spacing.screen,
+    // keep the last card clear of the FAB
+    paddingBottom: FAB_SIZE + FAB_MARGIN * 2,
   },
   fab: {
     position: "absolute",
-    right: 20,
-    bottom: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#2E7D32",
+    right: FAB_MARGIN,
+    bottom: FAB_MARGIN,
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: radius.fab,
+    backgroundColor: colors.primary,
     justifyContent: "center",
     alignItems: "center",
     elevation: 4,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-  },
-  secondaryFab: {
-    position: "absolute",
-    right: 20,
-    bottom: 88,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#fff",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#d7e7d7",
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.18,
-    shadowRadius: 4,
+    shadowRadius: 6,
   },
   modalBackdrop: {
     flex: 1,
@@ -340,40 +344,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 24,
   },
-  modalCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 18,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#222",
-    marginBottom: 12,
-  },
+  modalCard: { backgroundColor: colors.surface, borderRadius: radius.card, padding: 18 },
+  modalTitle: { marginBottom: 12 },
   modalInput: {
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
+    borderColor: colors.border,
+    borderRadius: 14,
+    height: 48,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    fontFamily: fonts.body,
     fontSize: 15,
-    color: "#333",
+    color: colors.text,
   },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 18,
-    marginTop: 16,
-  },
-  modalActionSecondary: {
-    fontSize: 15,
-    color: "#777",
-    fontWeight: "600",
-  },
-  modalActionPrimary: {
-    fontSize: 15,
-    color: "#2E7D32",
-    fontWeight: "700",
-  },
+  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 12 },
+  modalAction: { height: MIN_TOUCH_TARGET, justifyContent: "center", paddingHorizontal: 8 },
+  modalActionSecondary: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.textMuted },
+  modalActionPrimary: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.primaryDark },
 });
