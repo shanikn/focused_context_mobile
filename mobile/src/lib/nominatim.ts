@@ -15,7 +15,7 @@ export interface AddressResult {
 
 // invisible bidi control characters (LRM/RLM, embeddings, isolates) that a
 // Hebrew keyboard or copied RTL text can add; they make Nominatim miss
-const BIDI_CONTROLS = /[‎‏‪-‮⁦-⁩]/g;
+const BIDI_CONTROLS = /[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 
 export function cleanQuery(query: string): string {
   return query.replace(BIDI_CONTROLS, "").replace(/\s+/g, " ").trim();
