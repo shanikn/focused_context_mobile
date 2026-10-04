@@ -93,3 +93,29 @@ def test_reminder_time_source():
     assert reminder_time_source(fuzzy) == "text"
     assert reminder_time_source(default) == "default"
     assert reminder_time_source(no_time) is None
+
+
+def test_date_only_note_gets_a_morning_alarm_on_that_day():
+    from datetime import datetime
+    from agents.pipeline import compute_enrichment, reminder_time_source
+    from places import Place
+
+    uni = Place(id="p-uni", user_id=None, name="Uni", kind="uni")
+    note = Note(content="get 20 minutes early to the exam on the 9th of October")
+    fields = compute_enrichment(note, [uni], datetime(2026, 10, 4, 13, 0))
+
+    assert fields["category"] == "scheduled"
+    assert fields["contexts"] == ["p-uni", "08:00"]
+    assert fields["remind_on_date"] == "2026-10-09"
+    note.contexts = fields["contexts"]
+    assert reminder_time_source(note) == "text"
+
+
+def test_written_time_beats_the_date_only_default():
+    from datetime import datetime
+    from agents.pipeline import compute_enrichment
+
+    note = Note(content="exam on 9 October at 9:25")
+    fields = compute_enrichment(note, [], datetime(2026, 10, 4, 13, 0))
+    assert fields["contexts"] == ["09:25"]
+    assert fields["remind_on_date"] == "2026-10-09"

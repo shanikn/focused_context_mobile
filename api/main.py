@@ -2,7 +2,6 @@ import logging
 from typing import Optional
 import os
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks
 
 load_dotenv()
 
@@ -88,7 +87,6 @@ def require_user_id(authorization: Optional[str]) -> str:
 @app.post("/notes/")
 def create_note(
     request: NoteRequest,
-    background_tasks: BackgroundTasks,
     authorization: Optional[str] = Header(None),
 ):
     user_id = require_user_id(authorization)
@@ -108,7 +106,9 @@ def create_note(
         user_id=user_id,
     )
     save_note(note)
-    background_tasks.add_task(enrich_note, note)
+    # inline, like PUT: the phone syncs alarms right after saving, so the
+    # date/time and place must already be there
+    enrich_note(note)
     logging.info("Note created: %s (%s)", note.id, note.content[:30])
     return {"id": note.id, "content": note.content, "category": note.category}
 

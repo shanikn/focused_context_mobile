@@ -121,3 +121,37 @@ def test_infer_place_none():
 
 def test_infer_place_without_places():
     assert infer_place("do the laundry", []) is None
+
+
+# absolute dates written in the note
+def test_infer_date_day_of_month():
+    from datetime import datetime
+    from agents.categorizer import infer_date
+    now = datetime(2026, 10, 4, 13, 0)
+    note = "get 20 minutes early to the exam on the 9th of October"
+    assert infer_date(note, now) == "2026-10-09"
+    assert infer_date("dentist October 9th", now) == "2026-10-09"
+    assert infer_date("dentist oct 9, 2027", now) == "2027-10-09"
+    assert infer_date("party 9/10", now) == "2026-10-09"
+
+
+def test_infer_date_past_day_rolls_to_next_year():
+    from datetime import datetime
+    from agents.categorizer import infer_date
+    now = datetime(2026, 10, 4, 13, 0)
+    assert infer_date("birthday 3 March", now) == "2027-03-03"
+
+
+def test_infer_date_ignores_impossible_dates():
+    from datetime import datetime
+    from agents.categorizer import infer_date
+    now = datetime(2026, 10, 4, 13, 0)
+    assert infer_date("31st of February", now) is None
+    assert infer_date("mix 1/2 cup", now) == "2027-02-01"  # day/month, by design
+    assert infer_date("may I borrow it", now) is None
+
+
+def test_note_with_a_date_is_scheduled():
+    note = "get 20 minutes early to the exam on the 9th of October"
+    assert categorize(note) == "scheduled"
+    assert _place_id(note) == "p-uni"

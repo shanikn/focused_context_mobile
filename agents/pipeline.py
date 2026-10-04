@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from agents.ingestion import ingest_note
 from agents.categorizer import (
     categorize, infer_place, infer_time,
-    infer_date, default_time_for,
+    infer_date, default_time_for, DATE_ONLY_TIME,
 )
 from agents.relevance import get_relevant_notes, collection
 from agents.ranking_policy import apply_feedback
@@ -29,7 +29,12 @@ def reminder_time_source(note: Note) -> Optional[str]:
     )
     if time is None:
         return None
-    return "text" if infer_time(note.content) == time else "default"
+    if infer_time(note.content) == time:
+        return "text"
+    # a day written in the note ("exam on 9 October") earns an alarm too
+    if infer_date(note.content) and time == DATE_ONLY_TIME:
+        return "text"
+    return "default"
 
 
 def _parse_time_text(time_text: Optional[str]) -> Optional[tuple[int, int]]:
@@ -106,14 +111,19 @@ def compute_enrichment(note: Note, places: list, now: datetime) -> dict:
         time = f"{note.remind_at_hour:02d}:{minute:02d}"
     else:
         time = infer_time(note.content)
-        if time is None:
-            time = default_time_for(place)
-    if time is not None:
-        contexts.append(time)
     if note.remind_date_explicit and note.remind_on_date is not None:
         resolved_date = note.remind_on_date
     else:
         resolved_date = infer_date(note.content, now)
+    if time is None:
+        # a day without a time gets a morning alarm on that day
+        later_day = resolved_date and resolved_date > now.strftime("%Y-%m-%d")
+        if later_day and not note.remind_date_explicit:
+            time = DATE_ONLY_TIME
+        else:
+            time = default_time_for(place)
+    if time is not None:
+        contexts.append(time)
     resolved_date = _adjust_smart_date_for_future(
         resolved_date, time, note, now
     )
