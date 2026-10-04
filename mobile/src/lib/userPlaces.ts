@@ -4,7 +4,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // place's coordinates stay on this phone, stored by place id. Geofence
 // regions and the current location use the same place ids.
 
-export const DEFAULT_RADIUS_METERS = 150;
+// geofence radius per place, chosen in Settings
+export const RADIUS_CHOICES = [100, 200, 400, 800] as const;
+export const DEFAULT_RADIUS_METERS = 200;
 
 // the current location when not at any saved place
 export const UNKNOWN = "unknown";
@@ -54,20 +56,38 @@ async function writeCoords(coords: Record<string, PlaceCoords>): Promise<void> {
   await AsyncStorage.setItem(COORDS_KEY, JSON.stringify(coords));
 }
 
+// Without an explicit radius, a place keeps the radius it already had
+// (so moving it doesn't undo the user's choice); new places get the default.
 export async function setPlaceCoords(
   placeId: string,
   position: { latitude: number; longitude: number },
-  radius: number = DEFAULT_RADIUS_METERS,
+  radius?: number,
   origin?: { source: CoordsSource; address?: string }
 ): Promise<void> {
   const coords = await getAllCoords();
-  coords[placeId] = { latitude: position.latitude, longitude: position.longitude, radius };
+  coords[placeId] = {
+    latitude: position.latitude,
+    longitude: position.longitude,
+    radius: radius ?? coords[placeId]?.radius ?? DEFAULT_RADIUS_METERS,
+  };
   if (origin) {
     coords[placeId].source = origin.source;
     if (origin.source === "address" && origin.address) {
       coords[placeId].address = origin.address;
     }
   }
+  await writeCoords(coords);
+}
+
+export async function setPlaceRadius(placeId: string, radius: number): Promise<void> {
+  if (!(RADIUS_CHOICES as readonly number[]).includes(radius)) {
+    throw new Error(`radius must be one of ${RADIUS_CHOICES.join(", ")} m`);
+  }
+  const coords = await getAllCoords();
+  if (!coords[placeId]) {
+    throw new Error("set the place's location before its radius");
+  }
+  coords[placeId] = { ...coords[placeId], radius };
   await writeCoords(coords);
 }
 
@@ -156,6 +176,12 @@ export function placeLocationText(place: UserPlace): string {
     return "Set from current location";
   }
   return "Location saved";
+}
+
+// The grey line under a place's name: where it is, plus its radius.
+export function placeSubtitle(place: UserPlace): string {
+  const text = placeLocationText(place);
+  return place.coords ? `${text} · ${place.coords.radius} m` : text;
 }
 
 export function placeName(id: string, places: ServerPlace[]): string | null {

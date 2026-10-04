@@ -19,6 +19,7 @@ import { Note } from "../types/notes";
 import NoteCard from "../components/NoteCard";
 import { NotesStackParamList } from "../../App";
 import { addCustomList, getCustomLists, removeCustomList } from "../lib/listPrefs";
+import { folderTabs } from "../lib/folderOrder";
 import { syncScheduledReminders } from "../services/scheduledReminders";
 import { loadPlaces } from "../services/placesStore";
 import { ServerPlace } from "../lib/userPlaces";
@@ -39,8 +40,8 @@ export default function NotesListScreen() {
   const [newListName, setNewListName] = useState("");
 
   const listNames = useMemo(() => {
-    const names = [...new Set([...notes.map((n) => n.list_name || "General"), ...customLists])];
-    return ["All", ...names.sort()];
+    // All, then General, then the other folders alphabetically
+    return folderTabs(notes, customLists);
   }, [notes, customLists]);
 
   const filteredNotes = useMemo(() => {
