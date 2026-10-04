@@ -1,13 +1,17 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { auth, GOOGLE_WEB_CLIENT_ID } from "../config/firebase";
 import {
   signInWithEmailAndPassword,
@@ -21,14 +25,50 @@ import {
   isSuccessResponse,
   statusCodes,
 } from "@react-native-google-signin/google-signin";
+import { authErrorMessage } from "../lib/authErrors";
+import { colorFor, DEFAULT_CATEGORY_COLORS, textColorFor } from "../lib/categoryColors";
+import { Card, IconTile, PrimaryButton, TextButton } from "../components/ui";
+import { colors, fonts, MIN_TOUCH_TARGET, radius, spacing, type } from "../theme";
 
 GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID });
+
+const TASK_COLOR = colorFor("task", DEFAULT_CATEGORY_COLORS);
+
+// A note drawn like a card in the real list, to show what the app does
+// before signing in. Not a real note, so screen readers skip it.
+function SampleNote() {
+  return (
+    <View
+      testID="sample-note"
+      style={styles.sample}
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+    >
+      <IconTile icon="checkbox-outline" backgroundColor={TASK_COLOR} iconColor={textColorFor(TASK_COLOR)} />
+      <View style={styles.sampleBody}>
+        <Text style={type.body} numberOfLines={1}>
+          Water the plants
+        </Text>
+        <View style={styles.sampleMeta}>
+          <Text style={[type.caption, styles.sampleCategory]}>Task</Text>
+          <Text style={type.caption}> · </Text>
+          <Ionicons name="location-outline" size={13} color={colors.textMuted} />
+          <Text style={type.caption}> Home</Text>
+        </View>
+      </View>
+      <Text style={styles.sampleTime}>19:00</Text>
+    </View>
+  );
+}
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState<"email" | "password" | null>(null);
+  const passwordRef = useRef<TextInput>(null);
 
   // same Firebase project as the web app, so the same Google account
   // gets the same uid (and the same notes)
@@ -45,11 +85,12 @@ export default function LoginScreen() {
         throw new Error("Google didn't return an idToken");
       }
       await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
-    } catch (error: any) {
-      if (isErrorWithCode(error) && error.code === statusCodes.IN_PROGRESS) {
+    } catch (e: any) {
+      if (isErrorWithCode(e) && e.code === statusCodes.IN_PROGRESS) {
         return;
       }
-      Alert.alert("Google sign-in failed", error.message);
+      // rare, and the message comes from Google
+      Alert.alert("Google sign-in failed", e.message);
     } finally {
       setSubmitting(false);
     }
@@ -57,144 +98,167 @@ export default function LoginScreen() {
 
   const handleSubmit = async () => {
     if (!email || !password) {
-      Alert.alert("Error", "Please enter email and password");
+      setError("Enter your email and password.");
       return;
     }
 
     setSubmitting(true);
+    setError(null);
     try {
       if (isSignUp) {
         await createUserWithEmailAndPassword(auth, email, password);
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
-    } catch (error: any) {
-      Alert.alert("Error", error.message);
+    } catch (e) {
+      setError(authErrorMessage(e));
     } finally {
       setSubmitting(false);
     }
   };
 
+  const toggleMode = () => {
+    setIsSignUp((current) => !current);
+    setError(null);
+  };
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>FocusedContext</Text>
-      <Text style={styles.subtitle}>
-        {isSignUp ? "Create an account" : "Sign in to continue"}
-      </Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={handleSubmit}
-        disabled={submitting}
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        {submitting ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>
-            {isSignUp ? "Sign Up" : "Sign In"}
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <Text style={styles.title}>Smart Mind</Text>
+          <Text style={[type.body, styles.subtitle]} numberOfLines={2}>
+            Write a note once. It comes back when you get to the place or time it's for.
           </Text>
-        )}
-      </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.googleButton}
-        onPress={handleGoogleSignIn}
-        disabled={submitting}
-      >
-        <Text style={styles.googleButtonText}>Sign in with Google</Text>
-      </TouchableOpacity>
+          <SampleNote />
 
-      <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
-        <Text style={styles.switchText}>
-          {isSignUp
-            ? "Already have an account? Sign In"
-            : "Don't have an account? Sign Up"}
-        </Text>
-      </TouchableOpacity>
-    </View>
+          <Card>
+            <TouchableOpacity
+              style={styles.googleButton}
+              onPress={handleGoogleSignIn}
+              disabled={submitting}
+              accessibilityRole="button"
+              accessibilityLabel="Continue with Google"
+            >
+              <Ionicons name="logo-google" size={18} color={colors.text} />
+              <Text style={styles.googleText}>Continue with Google</Text>
+            </TouchableOpacity>
+
+            <Text style={[type.caption, styles.label]}>Email</Text>
+            <TextInput
+              style={[styles.input, focused === "email" && styles.inputFocused]}
+              value={email}
+              onChangeText={(value) => {
+                setEmail(value);
+                setError(null);
+              }}
+              onFocus={() => setFocused("email")}
+              onBlur={() => setFocused(null)}
+              autoCapitalize="none"
+              autoComplete="email"
+              keyboardType="email-address"
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              accessibilityLabel="Email"
+            />
+
+            <Text style={[type.caption, styles.label]}>Password</Text>
+            <TextInput
+              ref={passwordRef}
+              style={[styles.input, focused === "password" && styles.inputFocused]}
+              value={password}
+              onChangeText={(value) => {
+                setPassword(value);
+                setError(null);
+              }}
+              onFocus={() => setFocused("password")}
+              onBlur={() => setFocused(null)}
+              secureTextEntry
+              autoComplete={isSignUp ? "new-password" : "password"}
+              returnKeyType="go"
+              onSubmitEditing={handleSubmit}
+              accessibilityLabel="Password"
+            />
+
+            {error && (
+              <View style={styles.errorRow} accessibilityLiveRegion="polite">
+                <Ionicons name="alert-circle-outline" size={16} color={colors.danger} />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
+
+            <PrimaryButton
+              label={isSignUp ? "Create account" : "Sign in"}
+              onPress={handleSubmit}
+              loading={submitting}
+              style={styles.submit}
+            />
+          </Card>
+
+          <View style={styles.switchRow}>
+            <TextButton
+              label={isSignUp ? "Have an account? Sign in" : "New here? Create an account"}
+              onPress={toggleMode}
+            />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
+  container: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
+  content: { padding: spacing.screen, paddingTop: 32, gap: spacing.cardGap },
+  title: { fontFamily: fonts.display, fontSize: 34, lineHeight: 44, color: colors.text },
+  subtitle: { fontFamily: fonts.body, color: colors.textMuted, marginBottom: 4 },
+  sample: {
+    flexDirection: "row",
     alignItems: "center",
-    padding: 24,
-    backgroundColor: "#f5f5f5",
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "bold",
-    marginBottom: 8,
-    color: "#333",
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "#666",
-    marginBottom: 32,
-  },
-  input: {
-    width: "100%",
-    height: 48,
-    backgroundColor: "#fff",
-    borderRadius: 8,
+    gap: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.noteCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    fontSize: 16,
   },
-  button: {
-    width: "100%",
-    height: 48,
-    backgroundColor: "#2E7D32",
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  sampleBody: { flex: 1 },
+  sampleMeta: { flexDirection: "row", alignItems: "center", marginTop: 2 },
+  sampleCategory: { fontFamily: fonts.bodySemi, color: TASK_COLOR },
+  sampleTime: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.text, fontVariant: ["tabular-nums"] },
   googleButton: {
-    width: "100%",
     height: 48,
-    backgroundColor: "#fff",
-    borderRadius: 8,
+    borderRadius: radius.chip,
     borderWidth: 1,
-    borderColor: "#ddd",
-    justifyContent: "center",
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    justifyContent: "center",
+    gap: 10,
   },
-  googleButtonText: {
-    color: "#333",
+  googleText: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.text },
+  label: { marginTop: 14, marginBottom: 6 },
+  input: {
+    height: 48,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    fontFamily: fonts.body,
     fontSize: 16,
-    fontWeight: "600",
+    color: colors.text,
+    backgroundColor: colors.surface,
   },
-  switchText: {
-    color: "#2E7D32",
-    fontSize: 14,
-  },
+  inputFocused: { borderColor: colors.primary },
+  errorRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10 },
+  errorText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.danger },
+  submit: { marginTop: 16, minHeight: MIN_TOUCH_TARGET },
+  switchRow: { alignItems: "center" },
 });
