@@ -227,7 +227,11 @@ def get_reminders_endpoint(
     label = place.name if place else location
     query = f"{label} {hour}" if hour is not None else label
     notes = get_reminders(query, location, hour, minute, user_id)
-    return [note_to_dict(n) for n in notes]
+    # the phone uses the source to keep timed notes out of arrival alerts
+    return [
+        {**note_to_dict(n), "reminder_time_source": reminder_time_source(n)}
+        for n in notes
+    ]
 
 
 # ---- address search: the phone asks us, we ask OpenStreetMap Nominatim ----

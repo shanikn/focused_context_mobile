@@ -250,3 +250,18 @@ def test_list_notes_reports_reminder_time_source():
     full_delete(default)
     assert by_id[written]["reminder_time_source"] == "text"
     assert by_id[default]["reminder_time_source"] == "default"
+
+
+def test_reminders_report_reminder_time_source():
+    # its own place, so only these notes can match it (results are capped at 3)
+    place = client.post("/places/", json={"name": "Laundromat"}).json()
+    timed = client.post("/notes/", json={"content": "laundromat at 17:54"}).json()["id"]
+    plain = client.post("/notes/", json={"content": "laundromat coins"}).json()["id"]
+    res = client.get("/reminders/", params={"location": "Laundromat", "hour": 17, "minute": 50})
+    by_id = {n["_id"]: n for n in res.json()}
+    full_delete(timed)
+    full_delete(plain)
+    client.delete(f"/places/{place['id']}")
+    assert res.status_code == 200
+    assert by_id[timed]["reminder_time_source"] == "text"
+    assert by_id[plain]["reminder_time_source"] is None

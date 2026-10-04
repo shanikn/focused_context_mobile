@@ -1,4 +1,10 @@
-import { locationAfterGeofenceEvent, regionsFromPlaces, shouldGeofence } from "./geofenceLogic";
+import {
+  locationAfterGeofenceEvent,
+  regionsChanged,
+  regionsFromPlaces,
+  shouldGeofence,
+  shouldNotifyArrival,
+} from "./geofenceLogic";
 import { UNKNOWN, UserPlace } from "./userPlaces";
 
 const KNOWN = new Set(["id-home", "id-gym", "id-uni"]);
@@ -99,5 +105,48 @@ describe("shouldGeofence", () => {
     ["no places with coordinates", { placeCount: 0 }],
   ])("%s: don't geofence", (_label, change) => {
     expect(shouldGeofence({ ...on, ...change })).toBe(false);
+  });
+});
+
+describe("initial ENTER after (re-)registering geofences", () => {
+  // Android (expo-location sets INITIAL_TRIGGER_ENTER) reports ENTER right away
+  // for every region you're already inside when geofences are registered.
+  const REGISTERED = 1_000_000;
+
+  test("ENTER within a minute of registering is not an arrival to notify about", () => {
+    expect(shouldNotifyArrival("enter", REGISTERED + 5_000, REGISTERED)).toBe(false);
+    expect(shouldNotifyArrival("enter", REGISTERED + 59_000, REGISTERED)).toBe(false);
+  });
+
+  test("ENTER later is a real arrival", () => {
+    expect(shouldNotifyArrival("enter", REGISTERED + 61_000, REGISTERED)).toBe(true);
+  });
+
+  test("EXIT never notifies", () => {
+    expect(shouldNotifyArrival("exit", REGISTERED + 120_000, REGISTERED)).toBe(false);
+  });
+
+  test("no registration time recorded: treat as a real arrival", () => {
+    expect(shouldNotifyArrival("enter", REGISTERED, null)).toBe(true);
+  });
+});
+
+describe("regionsChanged (skip re-registering when nothing changed)", () => {
+  const home = { identifier: "id-home", latitude: 1, longitude: 2, radius: 200, notifyOnEnter: true, notifyOnExit: true };
+  const uni = { identifier: "id-uni", latitude: 3, longitude: 4, radius: 400, notifyOnEnter: true, notifyOnExit: true };
+
+  test("same regions, any order: unchanged", () => {
+    expect(regionsChanged([home, uni], [uni, home])).toBe(false);
+  });
+
+  test("a moved place, a new radius, or an added/removed place: changed", () => {
+    expect(regionsChanged([home], [{ ...home, latitude: 1.001 }])).toBe(true);
+    expect(regionsChanged([home], [{ ...home, radius: 400 }])).toBe(true);
+    expect(regionsChanged([home], [home, uni])).toBe(true);
+    expect(regionsChanged([home, uni], [uni])).toBe(true);
+  });
+
+  test("nothing registered before: changed", () => {
+    expect(regionsChanged(null, [home])).toBe(true);
   });
 });

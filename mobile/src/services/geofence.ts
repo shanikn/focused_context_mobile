@@ -1,9 +1,17 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
 
 import { auth } from "../config/firebase";
 import { setAuthToken } from "../api/client";
-import { locationAfterGeofenceEvent, regionsFromPlaces, shouldGeofence } from "../lib/geofenceLogic";
+import {
+  GeofenceRegion,
+  locationAfterGeofenceEvent,
+  regionsChanged,
+  regionsFromPlaces,
+  shouldGeofence,
+  shouldNotifyArrival,
+} from "../lib/geofenceLogic";
 import { getAllCoords } from "../lib/userPlaces";
 import { loadPlaces } from "./placesStore";
 import {
@@ -15,6 +23,25 @@ import { getGrantedPermissions } from "./locationPermissions";
 import { checkAndNotifyReminders } from "./reminderNotifier";
 
 export const GEOFENCE_TASK = "focusedcontext-geofence";
+
+// when and which regions were last registered (see shouldNotifyArrival)
+const REGISTERED_AT_KEY = "focusedcontext.geofence.registeredAt";
+const REGISTERED_REGIONS_KEY = "focusedcontext.geofence.regions";
+
+async function getRegisteredAt(): Promise<number | null> {
+  const raw = await AsyncStorage.getItem(REGISTERED_AT_KEY);
+  const value = raw ? Number(raw) : NaN;
+  return Number.isFinite(value) ? value : null;
+}
+
+async function getRegisteredRegions(): Promise<GeofenceRegion[] | null> {
+  try {
+    const raw = await AsyncStorage.getItem(REGISTERED_REGIONS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 // When Android wakes the app in the background for a geofence event, no
 // screen has mounted, so AuthContext hasn't set the API token yet.
@@ -52,7 +79,10 @@ TaskManager.defineTask<{
     if (location !== current) {
       await setReminderLocation(location);
     }
-    if (arrived && (await ensureAuthToken())) {
+    // the ENTER Android fires right after (re-)registering, for a place
+    // you're already at, updates the place above but isn't an arrival
+    const notify = arrived && shouldNotifyArrival(event, Date.now(), await getRegisteredAt());
+    if (notify && (await ensureAuthToken())) {
       // per-slot de-dupe in checkAndNotifyReminders stops re-entry spam
       await checkAndNotifyReminders({ onArrival: true });
     }
@@ -79,11 +109,18 @@ export async function syncGeofencing(): Promise<void> {
       notificationsGranted: permissions.notifications,
       placeCount: regions.length,
     });
+    const started = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK);
     if (active) {
-      // replaces any regions registered before
-      await Location.startGeofencingAsync(GEOFENCE_TASK, regions);
-    } else if (await Location.hasStartedGeofencingAsync(GEOFENCE_TASK)) {
+      // re-registering fires an ENTER for every place you're inside, so only
+      // do it when the regions changed (new place, moved, new radius)
+      if (!started || regionsChanged(await getRegisteredRegions(), regions)) {
+        await AsyncStorage.setItem(REGISTERED_AT_KEY, String(Date.now()));
+        await Location.startGeofencingAsync(GEOFENCE_TASK, regions);
+        await AsyncStorage.setItem(REGISTERED_REGIONS_KEY, JSON.stringify(regions));
+      }
+    } else if (started) {
       await Location.stopGeofencingAsync(GEOFENCE_TASK);
+      await AsyncStorage.removeItem(REGISTERED_REGIONS_KEY);
     }
   } catch (e) {
     console.log("Geofence sync failed", e);
