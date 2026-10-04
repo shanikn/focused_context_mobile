@@ -5,25 +5,19 @@ import { Swipeable } from "react-native-gesture-handler";
 import { Note } from "../types/notes";
 import { locationLabel as placeLabel, reminderLabel } from "../lib/noteLabels";
 import { ServerPlace } from "../lib/userPlaces";
+import { CategoryColors, colorFor, textColorFor } from "../lib/categoryColors";
 
-const CATEGORY_COLORS: Record<string, string> = {
-  task: "#1976D2",
-  errand: "#388E3C",
-  idea: "#7B1FA2",
-  reminder: "#F57C00",
-  scheduled: "#C2185B",
-  uncategorized: "#757575",
-};
 
 interface NoteCardProps {
   note: Note;
   onPress: () => void;
   onDelete: () => void;
   places: ServerPlace[];
+  categoryColors: CategoryColors;
 }
 
-export default function NoteCard({ note, onPress, onDelete, places }: NoteCardProps) {
-  const categoryColor = CATEGORY_COLORS[note.category] || CATEGORY_COLORS.uncategorized;
+export default function NoteCard({ note, onPress, onDelete, places, categoryColors }: NoteCardProps) {
+  const categoryColor = colorFor(note.category, categoryColors);
   const locationLabel = placeLabel(note, places);
   const alertsLabel = reminderLabel(note);
   const alertsOff = note.reminders_enabled === false;
@@ -60,7 +54,12 @@ export default function NoteCard({ note, onPress, onDelete, places }: NoteCardPr
             {note.content}
           </Text>
           <View style={styles.meta}>
-            <Text style={[styles.categoryBadge, { color: categoryColor }]}>
+            <Text
+              style={[
+                styles.categoryBadge,
+                { backgroundColor: categoryColor, color: textColorFor(categoryColor) },
+              ]}
+            >
               {note.category}
             </Text>
             {locationLabel && (
@@ -117,6 +116,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     textTransform: "capitalize",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    overflow: "hidden",
   },
   listName: {
     fontSize: 12,

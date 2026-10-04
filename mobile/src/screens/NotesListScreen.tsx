@@ -22,6 +22,7 @@ import { addCustomList, getCustomLists, removeCustomList } from "../lib/listPref
 import { syncScheduledReminders } from "../services/scheduledReminders";
 import { loadPlaces } from "../services/placesStore";
 import { ServerPlace } from "../lib/userPlaces";
+import { CategoryColors, DEFAULT_CATEGORY_COLORS, getCategoryColors } from "../lib/categoryColors";
 
 type Nav = NativeStackNavigationProp<NotesStackParamList, "NotesList">;
 
@@ -29,6 +30,7 @@ export default function NotesListScreen() {
   const navigation = useNavigation<Nav>();
   const [notes, setNotes] = useState<Note[]>([]);
   const [places, setPlaces] = useState<ServerPlace[]>([]);
+  const [categoryColors, setCategoryColors] = useState<CategoryColors>(DEFAULT_CATEGORY_COLORS);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState("All");
@@ -48,13 +50,15 @@ export default function NotesListScreen() {
 
   const fetchNotes = useCallback(async () => {
     try {
-      const [data, savedLists, userPlaces] = await Promise.all([
+      const [data, savedLists, userPlaces, colors] = await Promise.all([
         getNotes(),
         getCustomLists(),
         loadPlaces().catch(() => []),
+        getCategoryColors().catch(() => DEFAULT_CATEGORY_COLORS),
       ]);
       setNotes(data);
       setPlaces(userPlaces);
+      setCategoryColors(colors);
       setCustomLists(savedLists);
     } catch (err: any) {
       Alert.alert("Error", "Failed to load notes");
@@ -189,6 +193,7 @@ export default function NotesListScreen() {
               }
               onDelete={() => handleDelete(item._id)}
               places={places}
+              categoryColors={categoryColors}
             />
           )}
           contentContainerStyle={{ paddingVertical: 8 }}

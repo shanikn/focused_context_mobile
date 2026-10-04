@@ -1,0 +1,117 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+// Colors for note categories, chosen by the user and stored on this phone only.
+
+export const CATEGORIES = ["task", "errand", "idea", "reminder", "scheduled", "uncategorized"] as const;
+export type Category = (typeof CATEGORIES)[number];
+export type CategoryColors = Record<Category, string>;
+
+export const DEFAULT_CATEGORY_COLORS: CategoryColors = {
+  task: "#1976D2",
+  errand: "#388E3C",
+  idea: "#7B1FA2",
+  reminder: "#F57C00",
+  scheduled: "#C2185B",
+  uncategorized: "#757575",
+};
+
+// basic colors offered before the custom color wheel
+export const BASIC_SWATCHES = [
+  "#F44336", // red
+  "#E91E63", // pink
+  "#9C27B0", // purple
+  "#3F51B5", // indigo
+  "#2196F3", // blue
+  "#009688", // teal
+  "#4CAF50", // green
+  "#FFEB3B", // yellow
+  "#FF9800", // orange
+  "#795548", // brown
+  "#9E9E9E", // grey
+  "#212121", // black
+];
+
+const STORAGE_KEY = "focusedcontext.categoryColors";
+
+function isCategory(value: string): value is Category {
+  return (CATEGORIES as readonly string[]).includes(value);
+}
+
+// "#abc", "abc", "#aabbcc" -> "#AABBCC"; anything else -> null
+export function normalizeHex(input: string): string | null {
+  const m = input.trim().match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!m) {
+    return null;
+  }
+  const hex = m[1].length === 3 ? m[1].split("").map((c) => c + c).join("") : m[1];
+  return `#${hex.toUpperCase()}`;
+}
+
+// WCAG relative luminance
+function luminance(hex: string): number {
+  const h = normalizeHex(hex) ?? "#000000";
+  const channel = (i: number) => {
+    const v = parseInt(h.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+}
+
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+// black or white, whichever is more readable on the background
+export function textColorFor(background: string): "#000000" | "#FFFFFF" {
+  return contrastRatio("#000000", background) >= contrastRatio("#FFFFFF", background)
+    ? "#000000"
+    : "#FFFFFF";
+}
+
+async function readOverrides(): Promise<Partial<CategoryColors>> {
+  const raw = await AsyncStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    const result: Partial<CategoryColors> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      const hex = typeof value === "string" ? normalizeHex(value) : null;
+      if (isCategory(key) && hex) {
+        result[key] = hex;
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+export async function getCategoryColors(): Promise<CategoryColors> {
+  return { ...DEFAULT_CATEGORY_COLORS, ...(await readOverrides()) };
+}
+
+export async function setCategoryColor(category: Category, color: string): Promise<void> {
+  const hex = normalizeHex(color);
+  if (!isCategory(category) || !hex) {
+    throw new Error(`invalid category color: ${category} ${color}`);
+  }
+  const overrides = await readOverrides();
+  overrides[category] = hex;
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
+}
+
+export async function resetCategoryColor(category: Category): Promise<void> {
+  const overrides = await readOverrides();
+  delete overrides[category];
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
+}
+
+export function colorFor(category: string, colors: CategoryColors): string {
+  return isCategory(category) ? colors[category] : colors.uncategorized;
+}

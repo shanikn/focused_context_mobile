@@ -33,6 +33,17 @@ import { loadPlaces } from "../services/placesStore";
 import { AddressResult } from "../lib/nominatim";
 import PlaceEditorModal from "../components/PlaceEditorModal";
 import AddressSearchModal from "../components/AddressSearchModal";
+import CategoryColorModal from "../components/CategoryColorModal";
+import {
+  Category,
+  CATEGORIES,
+  CategoryColors,
+  DEFAULT_CATEGORY_COLORS,
+  getCategoryColors,
+  resetCategoryColor,
+  setCategoryColor,
+  textColorFor,
+} from "../lib/categoryColors";
 import { GrantedPermissions, locationStatus } from "../lib/locationPermissionFlow";
 import { getGrantedPermissions } from "../services/locationPermissions";
 import { syncGeofencing } from "../services/geofence";
@@ -56,6 +67,8 @@ export default function SettingsScreen() {
   // place editor: null = closed, { place: null } = add, { place } = rename
   const [editor, setEditor] = useState<{ place: UserPlace | null } | null>(null);
   const [addressFor, setAddressFor] = useState<UserPlace | null>(null);
+  const [categoryColors, setCategoryColors] = useState<CategoryColors>(DEFAULT_CATEGORY_COLORS);
+  const [colorFor, setColorFor] = useState<Category | null>(null);
 
   const refreshPlaces = useCallback(async () => {
     const loaded = await loadPlaces();
@@ -73,6 +86,7 @@ export default function SettingsScreen() {
     useCallback(() => {
       getNotificationsEnabled().then(setNotificationsEnabledState).catch(() => {});
       refreshPlaces().catch(() => {});
+      getCategoryColors().then(setCategoryColors).catch(() => {});
       // read-only: never prompts
       getGrantedPermissions().then(setPermissions).catch(() => {});
     }, [refreshPlaces])
@@ -253,6 +267,26 @@ export default function SettingsScreen() {
     await syncScheduledReminders();
   };
 
+  const handleSaveCategoryColor = async (hex: string) => {
+    const category = colorFor;
+    setColorFor(null);
+    if (!category) {
+      return;
+    }
+    await setCategoryColor(category, hex);
+    setCategoryColors(await getCategoryColors());
+  };
+
+  const handleResetCategoryColor = async () => {
+    const category = colorFor;
+    setColorFor(null);
+    if (!category) {
+      return;
+    }
+    await resetCategoryColor(category);
+    setCategoryColors(await getCategoryColors());
+  };
+
   const handleSelectLocation = async (nextLocation: string) => {
     setLocation(nextLocation);
     await setReminderLocation(nextLocation);
@@ -391,10 +425,44 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Category colors</Text>
+        <Text style={styles.helperText}>
+          Tap a category to change its color. Saved on this phone.
+        </Text>
+        {CATEGORIES.map((category) => {
+          const color = categoryColors[category];
+          return (
+            <TouchableOpacity
+              key={category}
+              style={styles.colorRow}
+              onPress={() => setColorFor(category)}
+            >
+              <Text style={[styles.colorBadge, { backgroundColor: color, color: textColorFor(color) }]}>
+                {category}
+              </Text>
+              <Text style={styles.colorHex}>
+                {color}
+                {color === DEFAULT_CATEGORY_COLORS[category] ? "  (default)" : ""}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
 
+      <CategoryColorModal
+        visible={colorFor !== null}
+        category={colorFor ?? ""}
+        color={colorFor ? categoryColors[colorFor] : "#000000"}
+        isDefault={colorFor ? categoryColors[colorFor] === DEFAULT_CATEGORY_COLORS[colorFor] : true}
+        onSave={handleSaveCategoryColor}
+        onReset={handleResetCategoryColor}
+        onCancel={() => setColorFor(null)}
+      />
       <PlaceEditorModal
         visible={editor !== null}
         title={editor?.place ? `Rename ${editor.place.name}` : "Add place"}
@@ -568,6 +636,28 @@ const styles = StyleSheet.create({
   removeText: {
     color: "#e53935",
     fontSize: 13,
+  },
+  colorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+    marginTop: 4,
+  },
+  colorBadge: {
+    fontSize: 13,
+    fontWeight: "600",
+    textTransform: "capitalize",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  colorHex: {
+    fontSize: 12,
+    color: "#999",
   },
   signOutButton: {
     backgroundColor: "#fff",
