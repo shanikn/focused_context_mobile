@@ -17,23 +17,22 @@ import { useAuth } from "../context/AuthContext";
 import {
   getNotificationsEnabled,
   getReminderLocation,
-  LOCATION_BUCKETS,
-  LocationBucket,
   setNotificationsEnabled,
   setReminderLocation,
 } from "../lib/reminderPrefs";
 import { checkAndNotifyReminders, ensureNotificationPermissions } from "../services/reminderNotifier";
 import {
-  bucketLabel,
-  getPlaces,
-  Place,
-  PLACE_BUCKETS,
-  PlaceBucket,
-  placeFromPosition,
-  placesByBucket,
-  removePlace,
-  savePlace,
-} from "../lib/places";
+  removePlaceCoords,
+  resolveCurrentLocation,
+  setPlaceCoords,
+  UNKNOWN,
+  UserPlace,
+} from "../lib/userPlaces";
+import { createPlace, deletePlace, updatePlace } from "../api/places";
+import { loadPlaces } from "../services/placesStore";
+import { AddressResult } from "../lib/nominatim";
+import PlaceEditorModal from "../components/PlaceEditorModal";
+import AddressSearchModal from "../components/AddressSearchModal";
 import { GrantedPermissions, locationStatus } from "../lib/locationPermissionFlow";
 import { getGrantedPermissions } from "../services/locationPermissions";
 import { syncGeofencing } from "../services/geofence";
@@ -46,94 +45,163 @@ import {
 export default function SettingsScreen() {
   const { user } = useAuth();
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
-  const [location, setLocation] = useState<LocationBucket>("unknown");
+  const [location, setLocation] = useState<string>(UNKNOWN);
   const [checkingNow, setCheckingNow] = useState(false);
-  const [places, setPlaces] = useState<Record<PlaceBucket, Place | null>>(placesByBucket([]));
+  const [places, setPlaces] = useState<UserPlace[]>([]);
   const [permissions, setPermissions] = useState<GrantedPermissions | null>(null);
-  const [savingBucket, setSavingBucket] = useState<PlaceBucket | null>(null);
-  // bucket the user tapped before the permission flow, saved once it finishes
-  const pendingBucket = useRef<PlaceBucket | null>(null);
+  const [savingPlaceId, setSavingPlaceId] = useState<string | null>(null);
+  // place the user tapped "Use current location" for before the permission
+  // flow; saved once the flow finishes
+  const pendingPlaceId = useRef<string | null>(null);
+  // place editor: null = closed, { place: null } = add, { place } = rename
+  const [editor, setEditor] = useState<{ place: UserPlace | null } | null>(null);
+  const [addressFor, setAddressFor] = useState<UserPlace | null>(null);
 
   const refreshPlaces = useCallback(async () => {
-    setPlaces(placesByBucket(await getPlaces()));
+    const loaded = await loadPlaces();
+    setPlaces(loaded);
+    // map an old stored value ("home", "errands", a deleted place) to a place id
+    const stored = await getReminderLocation();
+    const resolved = resolveCurrentLocation(stored, loaded);
+    if (loaded.length > 0 && resolved !== stored) {
+      await setReminderLocation(resolved);
+    }
+    setLocation(loaded.length > 0 ? resolved : stored);
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       getNotificationsEnabled().then(setNotificationsEnabledState).catch(() => {});
-      getReminderLocation().then(setLocation).catch(() => {});
       refreshPlaces().catch(() => {});
       // read-only: never prompts
       getGrantedPermissions().then(setPermissions).catch(() => {});
     }, [refreshPlaces])
   );
 
-  const saveCurrentLocationAs = useCallback(
-    async (bucket: PlaceBucket) => {
-      setSavingBucket(bucket);
+  const afterPlacesChanged = useCallback(async () => {
+    await refreshPlaces();
+    await syncGeofencing();
+  }, [refreshPlaces]);
+
+  const saveCurrentLocationFor = useCallback(
+    async (placeId: string) => {
+      setSavingPlaceId(placeId);
       try {
         const position = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
-        await savePlace(placeFromPosition(bucket, position.coords));
-        await refreshPlaces();
-        await syncGeofencing();
+        await setPlaceCoords(placeId, position.coords);
+        await afterPlacesChanged();
       } catch {
         Alert.alert("Couldn't get your location", "Check that location is on and try again.");
       } finally {
-        setSavingBucket(null);
+        setSavingPlaceId(null);
       }
     },
-    [refreshPlaces]
+    [afterPlacesChanged]
   );
 
   const handlePermissionFlowDone = useCallback(
     (granted: GrantedPermissions) => {
       setPermissions(granted);
       syncGeofencing();
-      const bucket = pendingBucket.current;
-      pendingBucket.current = null;
-      if (!bucket) {
+      const placeId = pendingPlaceId.current;
+      pendingPlaceId.current = null;
+      if (!placeId) {
         return;
       }
       if (granted.foreground) {
-        saveCurrentLocationAs(bucket);
+        saveCurrentLocationFor(placeId);
       } else {
         Alert.alert(
           "Location not allowed",
-          "Without location access, set your current context with the picker instead."
+          "Without location access, find the place by address or set your current context with the picker."
         );
       }
     },
-    [saveCurrentLocationAs]
+    [saveCurrentLocationFor]
   );
 
   const permissionFlow = useLocationPermissionFlow(handlePermissionFlowDone);
 
-  const handleSetPlace = async (bucket: PlaceBucket) => {
+  const handleUseCurrentLocation = async (place: UserPlace) => {
     const granted = await getGrantedPermissions();
     setPermissions(granted);
     if (granted.foreground) {
-      await saveCurrentLocationAs(bucket);
+      await saveCurrentLocationFor(place.id);
       return;
     }
-    pendingBucket.current = bucket;
+    pendingPlaceId.current = place.id;
     await permissionFlow.start();
   };
 
-  const handleRemovePlace = (place: Place) => {
-    Alert.alert("Remove place", `Remove your saved ${place.label} location?`, [
+  const handleAddressPicked = async (result: AddressResult) => {
+    const place = addressFor;
+    setAddressFor(null);
+    if (!place) {
+      return;
+    }
+    await setPlaceCoords(place.id, result);
+    await afterPlacesChanged();
+  };
+
+  const handleEditorSave = async (name: string, keywords: string[]) => {
+    const target = editor?.place ?? null;
+    setEditor(null);
+    try {
+      if (target) {
+        await updatePlace(target.id, { name, keywords });
+      } else {
+        await createPlace(name, keywords);
+      }
+      await afterPlacesChanged();
+    } catch (e: any) {
+      const taken = String(e?.message ?? "").includes("409");
+      Alert.alert(
+        "Couldn't save the place",
+        taken ? `You already have a place named "${name}".` : "Check your connection and try again."
+      );
+    }
+  };
+
+  const handleClearCoords = (place: UserPlace) => {
+    Alert.alert("Forget location", `Forget where ${place.name} is on this phone?`, [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Remove",
+        text: "Forget",
         style: "destructive",
         onPress: async () => {
-          await removePlace(place.id);
-          await refreshPlaces();
-          await syncGeofencing();
+          await removePlaceCoords(place.id);
+          await afterPlacesChanged();
         },
       },
     ]);
+  };
+
+  const handleDeletePlace = (place: UserPlace) => {
+    Alert.alert(
+      "Delete place",
+      `Delete ${place.name}? Notes tagged with it lose that tag.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deletePlace(place.id);
+              await removePlaceCoords(place.id);
+              if (location === place.id) {
+                await setReminderLocation(UNKNOWN);
+              }
+              await afterPlacesChanged();
+            } catch {
+              Alert.alert("Couldn't delete the place", "Check your connection and try again.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const status = permissions ? locationStatus(permissions) : null;
@@ -185,7 +253,7 @@ export default function SettingsScreen() {
     await syncScheduledReminders();
   };
 
-  const handleSelectLocation = async (nextLocation: LocationBucket) => {
+  const handleSelectLocation = async (nextLocation: string) => {
     setLocation(nextLocation);
     await setReminderLocation(nextLocation);
   };
@@ -246,7 +314,7 @@ export default function SettingsScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Saved places</Text>
         <Text style={styles.helperText}>
-          Stand at a place and save it. Places stay on this phone.
+          Your places. Names sync to your account; where each place is stays on this phone.
         </Text>
         {status && (
           <Text style={[styles.statusText, status.mode === "manual" && styles.statusManual]}>
@@ -258,35 +326,49 @@ export default function SettingsScreen() {
             <Text style={styles.linkButtonText}>Turn on automatic location</Text>
           </TouchableOpacity>
         )}
-        {PLACE_BUCKETS.map((bucket) => {
-          const place = places[bucket];
-          return (
-            <View key={bucket} style={styles.placeRow}>
+        {places.map((place) => (
+          <View key={place.id} style={styles.placeBlock}>
+            <View style={styles.placeRow}>
               <View style={styles.rowText}>
-                <Text style={styles.placeName}>{bucketLabel(bucket)}</Text>
+                <Text style={styles.placeName}>{place.name}</Text>
                 <Text style={styles.helperText}>
-                  {place ? `Saved, ${place.radius} m radius` : "Not set"}
+                  {place.coords ? `Location saved, ${place.coords.radius} m radius` : "Location not set"}
                 </Text>
               </View>
-              {place && (
-                <TouchableOpacity onPress={() => handleRemovePlace(place)}>
-                  <Text style={styles.removeText}>Remove</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={[styles.placeButton, savingBucket !== null && styles.checkButtonDisabled]}
-                onPress={() => handleSetPlace(bucket)}
-                disabled={savingBucket !== null}
-              >
-                <Text style={styles.placeButtonText}>
-                  {savingBucket === bucket
-                    ? "Saving..."
-                    : `Set ${bucketLabel(bucket)} to my current location`}
-                </Text>
+              <TouchableOpacity onPress={() => setEditor({ place })}>
+                <Text style={styles.linkSmall}>Rename</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDeletePlace(place)}>
+                <Text style={styles.removeText}>Delete</Text>
               </TouchableOpacity>
             </View>
-          );
-        })}
+            <View style={styles.placeActions}>
+              <TouchableOpacity
+                style={[styles.placeButton, savingPlaceId !== null && styles.checkButtonDisabled]}
+                onPress={() => handleUseCurrentLocation(place)}
+                disabled={savingPlaceId !== null}
+              >
+                <Text style={styles.placeButtonText}>
+                  {savingPlaceId === place.id ? "Saving..." : "Use current location"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.placeButtonOutline}
+                onPress={() => setAddressFor(place)}
+              >
+                <Text style={styles.placeButtonOutlineText}>Search address</Text>
+              </TouchableOpacity>
+              {place.coords && (
+                <TouchableOpacity onPress={() => handleClearCoords(place)}>
+                  <Text style={styles.linkSmall}>Forget</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        ))}
+        <TouchableOpacity style={styles.addPlaceButton} onPress={() => setEditor({ place: null })}>
+          <Text style={styles.addPlaceText}>+ Add place</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
@@ -295,14 +377,14 @@ export default function SettingsScreen() {
           Manual fallback and override: pick where you are now.
         </Text>
         <View style={styles.pillWrap}>
-          {LOCATION_BUCKETS.map((option) => (
+          {[{ id: UNKNOWN, name: "Not at a place" }, ...places].map((option) => (
             <TouchableOpacity
-              key={option}
-              style={[styles.pill, location === option && styles.pillActive]}
-              onPress={() => handleSelectLocation(option)}
+              key={option.id}
+              style={[styles.pill, location === option.id && styles.pillActive]}
+              onPress={() => handleSelectLocation(option.id)}
             >
-              <Text style={[styles.pillText, location === option && styles.pillTextActive]}>
-                {option}
+              <Text style={[styles.pillText, location === option.id && styles.pillTextActive]}>
+                {option.name}
               </Text>
             </TouchableOpacity>
           ))}
@@ -313,6 +395,20 @@ export default function SettingsScreen() {
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
 
+      <PlaceEditorModal
+        visible={editor !== null}
+        title={editor?.place ? `Rename ${editor.place.name}` : "Add place"}
+        initialName={editor?.place?.name ?? ""}
+        initialKeywords={editor?.place?.keywords ?? []}
+        onSave={handleEditorSave}
+        onCancel={() => setEditor(null)}
+      />
+      <AddressSearchModal
+        visible={addressFor !== null}
+        placeName={addressFor?.name ?? ""}
+        onPick={handleAddressPicked}
+        onCancel={() => setAddressFor(null)}
+      />
       <LocationPermissionModal
         screen={permissionFlow.screen}
         onContinue={permissionFlow.proceed}
@@ -407,11 +503,48 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
+  placeBlock: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+  },
+  placeActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 8,
+  },
+  placeButtonOutline: {
+    borderWidth: 1,
+    borderColor: "#2E7D32",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  placeButtonOutlineText: {
+    color: "#2E7D32",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  linkSmall: {
+    color: "#2E7D32",
+    fontSize: 13,
+  },
+  addPlaceButton: {
+    marginTop: 16,
+    alignSelf: "flex-start",
+  },
+  addPlaceText: {
+    color: "#2E7D32",
+    fontSize: 15,
+    fontWeight: "600",
+  },
   placeRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginTop: 12,
   },
   placeName: {
     fontSize: 15,

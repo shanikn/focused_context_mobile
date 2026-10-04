@@ -14,7 +14,7 @@ const SCREENS: Record<Screen, { title: string; body: string; continueText: strin
   explain: {
     title: "Use your location?",
     body:
-      "FocusedContext can save your places (home, uni, work, errands) and show the " +
+      "FocusedContext can save your places (home, uni, the gym...) and show the " +
       "right notes when you're there. Next, Android will ask for location access.",
     continueText: "Continue",
   },

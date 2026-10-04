@@ -3,8 +3,9 @@ import * as TaskManager from "expo-task-manager";
 
 import { auth } from "../config/firebase";
 import { setAuthToken } from "../api/client";
-import { bucketAfterGeofenceEvent, regionsFromPlaces, shouldGeofence } from "../lib/geofenceLogic";
-import { getPlaces } from "../lib/places";
+import { locationAfterGeofenceEvent, regionsFromPlaces, shouldGeofence } from "../lib/geofenceLogic";
+import { getAllCoords } from "../lib/userPlaces";
+import { loadPlaces } from "./placesStore";
 import {
   getNotificationsEnabled,
   getReminderLocation,
@@ -40,13 +41,16 @@ TaskManager.defineTask<{
   try {
     const event = data.eventType === Location.GeofencingEventType.Enter ? "enter" : "exit";
     const current = await getReminderLocation();
-    const { bucket, arrived } = bucketAfterGeofenceEvent(
+    // regions are only registered for places with coordinates on this phone
+    const knownPlaceIds = new Set(Object.keys(await getAllCoords()));
+    const { location, arrived } = locationAfterGeofenceEvent(
       event,
       data.region.identifier ?? "",
-      current
+      current,
+      knownPlaceIds
     );
-    if (bucket !== current) {
-      await setReminderLocation(bucket);
+    if (location !== current) {
+      await setReminderLocation(location);
     }
     if (arrived && (await ensureAuthToken())) {
       // per-slot de-dupe in checkAndNotifyReminders stops re-entry spam
@@ -65,18 +69,19 @@ export async function syncGeofencing(): Promise<void> {
     const [permissions, notificationsEnabled, places] = await Promise.all([
       getGrantedPermissions(),
       getNotificationsEnabled(),
-      getPlaces(),
+      loadPlaces(),
     ]);
+    const regions = regionsFromPlaces(places);
     const active = shouldGeofence({
       foreground: permissions.foreground,
       background: permissions.background,
       notificationsEnabled,
       notificationsGranted: permissions.notifications,
-      placeCount: places.length,
+      placeCount: regions.length,
     });
     if (active) {
       // replaces any regions registered before
-      await Location.startGeofencingAsync(GEOFENCE_TASK, regionsFromPlaces(places));
+      await Location.startGeofencingAsync(GEOFENCE_TASK, regions);
     } else if (await Location.hasStartedGeofencingAsync(GEOFENCE_TASK)) {
       await Location.stopGeofencingAsync(GEOFENCE_TASK);
     }

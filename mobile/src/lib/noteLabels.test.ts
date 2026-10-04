@@ -1,4 +1,4 @@
-import { reminderLabel } from "./noteLabels";
+import { locationLabel, reminderLabel } from "./noteLabels";
 import { Note } from "../types/notes";
 
 const base = {
@@ -41,4 +41,20 @@ test("date and time", () => {
 
 test("no time or date: smart alerts", () => {
   expect(reminderLabel(note({}))).toBe("Smart alerts on");
+});
+
+describe("locationLabel (notes are tagged with place ids)", () => {
+  const places = [
+    { id: "id-home", name: "Home", keywords: [], kind: "home" as const },
+    { id: "id-gym", name: "Gym", keywords: [], kind: null },
+  ];
+
+  test("the name of the place the note is tagged with", () => {
+    expect(locationLabel(note({ contexts: ["id-gym", "18:00"] }), places)).toBe("Gym");
+  });
+
+  test("no place tag, or a place that no longer exists: no label", () => {
+    expect(locationLabel(note({ contexts: ["18:00"] }), places)).toBeNull();
+    expect(locationLabel(note({ contexts: ["id-deleted"] }), places)).toBeNull();
+  });
 });

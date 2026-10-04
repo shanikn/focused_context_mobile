@@ -16,10 +16,11 @@ import { createNote, updateNote, getNotes } from "../api/notes";
 import { NotesStackParamList } from "../../App";
 import { getCustomLists } from "../lib/listPrefs";
 import { syncScheduledReminders } from "../services/scheduledReminders";
+import { loadPlaces } from "../services/placesStore";
+import { ServerPlace } from "../lib/userPlaces";
 
 type RouteParams = RouteProp<NotesStackParamList, "AddEditNote">;
 const CATEGORY_OPTIONS = ["task", "errand", "idea", "reminder", "scheduled", "uncategorized"] as const;
-const LOCATION_OPTIONS = ["home", "uni", "work", "errands"] as const;
 
 function formatDateValue(date: Date | null): string {
   if (!date) {
@@ -75,7 +76,9 @@ export default function AddEditNoteScreen() {
   const [categoryExplicit, setCategoryExplicit] = useState(existingNote?.category_explicit ?? false);
   const [selectedCategory, setSelectedCategory] = useState(existingNote?.category || "uncategorized");
   const [locationExplicit, setLocationExplicit] = useState(existingNote?.location_explicit ?? false);
-  const [selectedLocation, setSelectedLocation] = useState(existingNote?.location_value || "home");
+  // place id of the hand-picked location
+  const [selectedLocation, setSelectedLocation] = useState(existingNote?.location_value || "");
+  const [places, setPlaces] = useState<ServerPlace[]>([]);
   const [remindersEnabled, setRemindersEnabled] = useState(existingNote?.reminders_enabled ?? true);
   const [dateOverrideEnabled, setDateOverrideEnabled] = useState(
     existingNote?.remind_date_explicit ?? false
@@ -104,6 +107,7 @@ export default function AddEditNoteScreen() {
           setExistingLists(names);
         })
         .catch(() => {});
+      loadPlaces().then(setPlaces).catch(() => {});
     }, [])
   );
 
@@ -128,7 +132,7 @@ export default function AddEditNoteScreen() {
           category: selectedCategory,
           category_explicit: categoryExplicit,
           location_explicit: locationExplicit,
-          location_value: locationExplicit ? selectedLocation : "",
+          location_value: locationExplicit && selectedLocation ? selectedLocation : "",
           remind_date_explicit: dateOverrideEnabled,
           remind_time_explicit: timeOverrideEnabled,
           remind_on_date: reminderDate,
@@ -144,7 +148,7 @@ export default function AddEditNoteScreen() {
           categoryExplicit,
           selectedCategory,
           locationExplicit,
-          locationExplicit ? selectedLocation : undefined,
+          locationExplicit && selectedLocation ? selectedLocation : undefined,
           dateOverrideEnabled,
           timeOverrideEnabled,
           reminderHour ?? undefined,
@@ -296,22 +300,22 @@ export default function AddEditNoteScreen() {
               Smart
             </Text>
           </TouchableOpacity>
-          {LOCATION_OPTIONS.map((location) => (
+          {places.map((place) => (
             <TouchableOpacity
-              key={location}
-              style={[styles.pill, locationExplicit && selectedLocation === location && styles.pillActive]}
+              key={place.id}
+              style={[styles.pill, locationExplicit && selectedLocation === place.id && styles.pillActive]}
               onPress={() => {
-                setSelectedLocation(location);
+                setSelectedLocation(place.id);
                 setLocationExplicit(true);
               }}
             >
               <Text
                 style={[
                   styles.pillText,
-                  locationExplicit && selectedLocation === location && styles.pillTextActive,
+                  locationExplicit && selectedLocation === place.id && styles.pillTextActive,
                 ]}
               >
-                {location}
+                {place.name}
               </Text>
             </TouchableOpacity>
           ))}

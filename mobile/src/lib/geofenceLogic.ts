@@ -1,29 +1,26 @@
-import { LocationBucket } from "./reminderPrefs";
-import { Place, PLACE_BUCKETS, PlaceBucket } from "./places";
+import { UNKNOWN, UserPlace } from "./userPlaces";
 
-// Pure logic for geofence events; the task itself lives in services/geofence.ts
+// Pure logic for geofence events; the task itself lives in services/geofence.ts.
+// Region identifiers are place ids, and so is the current location.
 
 export type GeofenceEvent = "enter" | "exit";
 
-function isPlaceBucket(value: string): value is PlaceBucket {
-  return (PLACE_BUCKETS as readonly string[]).includes(value);
-}
-
-// Regions are identified by their bucket. Enter switches to that bucket;
-// Exit only resets to "unknown" if we're still in the bucket being exited,
-// so a later Enter (or a manual pick) isn't undone by an older Exit.
-export function bucketAfterGeofenceEvent(
+// Enter switches to that place; Exit only resets to "unknown" if we're still
+// at the place being exited, so a later Enter (or a manual pick) isn't undone
+// by an older Exit. Regions for places that no longer exist are ignored.
+export function locationAfterGeofenceEvent(
   event: GeofenceEvent,
   regionId: string,
-  current: LocationBucket
-): { bucket: LocationBucket; arrived: boolean } {
-  if (!isPlaceBucket(regionId)) {
-    return { bucket: current, arrived: false };
+  current: string,
+  knownPlaceIds: Set<string>
+): { location: string; arrived: boolean } {
+  if (!knownPlaceIds.has(regionId)) {
+    return { location: current, arrived: false };
   }
   if (event === "enter") {
-    return { bucket: regionId, arrived: true };
+    return { location: regionId, arrived: true };
   }
-  return { bucket: current === regionId ? "unknown" : current, arrived: false };
+  return { location: current === regionId ? UNKNOWN : current, arrived: false };
 }
 
 // same shape as expo-location's LocationRegion
@@ -36,15 +33,22 @@ export interface GeofenceRegion {
   notifyOnExit: boolean;
 }
 
-export function regionsFromPlaces(places: Place[]): GeofenceRegion[] {
-  return places.map((p) => ({
-    identifier: p.bucket,
-    latitude: p.latitude,
-    longitude: p.longitude,
-    radius: p.radius,
-    notifyOnEnter: true,
-    notifyOnExit: true,
-  }));
+// only places with coordinates on this phone get a region
+export function regionsFromPlaces(places: UserPlace[]): GeofenceRegion[] {
+  return places.flatMap((p) =>
+    p.coords
+      ? [
+          {
+            identifier: p.id,
+            latitude: p.coords.latitude,
+            longitude: p.coords.longitude,
+            radius: p.coords.radius,
+            notifyOnEnter: true,
+            notifyOnExit: true,
+          },
+        ]
+      : []
+  );
 }
 
 export interface GeofenceConditions {
@@ -52,7 +56,7 @@ export interface GeofenceConditions {
   background: boolean;
   notificationsEnabled: boolean; // the in-app switch
   notificationsGranted: boolean; // the OS permission
-  placeCount: number;
+  placeCount: number; // places with coordinates
 }
 
 export function shouldGeofence(c: GeofenceConditions): boolean {

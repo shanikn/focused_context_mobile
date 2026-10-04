@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
 import { Note } from "../types/notes";
-import { reminderLabel } from "../lib/noteLabels";
+import { locationLabel as placeLabel, reminderLabel } from "../lib/noteLabels";
+import { ServerPlace } from "../lib/userPlaces";
 
 const CATEGORY_COLORS: Record<string, string> = {
   task: "#1976D2",
@@ -13,18 +14,17 @@ const CATEGORY_COLORS: Record<string, string> = {
   scheduled: "#C2185B",
   uncategorized: "#757575",
 };
-const LOCATION_CONTEXTS = new Set(["home", "uni", "work", "errands"]);
 
 interface NoteCardProps {
   note: Note;
   onPress: () => void;
   onDelete: () => void;
+  places: ServerPlace[];
 }
 
-export default function NoteCard({ note, onPress, onDelete }: NoteCardProps) {
+export default function NoteCard({ note, onPress, onDelete, places }: NoteCardProps) {
   const categoryColor = CATEGORY_COLORS[note.category] || CATEGORY_COLORS.uncategorized;
-  const locationLabel =
-    note.contexts.find((item) => typeof item === "string" && LOCATION_CONTEXTS.has(item)) ?? null;
+  const locationLabel = placeLabel(note, places);
   const alertsLabel = reminderLabel(note);
   const alertsOff = note.reminders_enabled === false;
 

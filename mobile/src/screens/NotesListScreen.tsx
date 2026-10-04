@@ -20,12 +20,15 @@ import NoteCard from "../components/NoteCard";
 import { NotesStackParamList } from "../../App";
 import { addCustomList, getCustomLists, removeCustomList } from "../lib/listPrefs";
 import { syncScheduledReminders } from "../services/scheduledReminders";
+import { loadPlaces } from "../services/placesStore";
+import { ServerPlace } from "../lib/userPlaces";
 
 type Nav = NativeStackNavigationProp<NotesStackParamList, "NotesList">;
 
 export default function NotesListScreen() {
   const navigation = useNavigation<Nav>();
   const [notes, setNotes] = useState<Note[]>([]);
+  const [places, setPlaces] = useState<ServerPlace[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState("All");
@@ -45,8 +48,13 @@ export default function NotesListScreen() {
 
   const fetchNotes = useCallback(async () => {
     try {
-      const [data, savedLists] = await Promise.all([getNotes(), getCustomLists()]);
+      const [data, savedLists, userPlaces] = await Promise.all([
+        getNotes(),
+        getCustomLists(),
+        loadPlaces().catch(() => []),
+      ]);
       setNotes(data);
+      setPlaces(userPlaces);
       setCustomLists(savedLists);
     } catch (err: any) {
       Alert.alert("Error", "Failed to load notes");
@@ -180,6 +188,7 @@ export default function NotesListScreen() {
                 })
               }
               onDelete={() => handleDelete(item._id)}
+              places={places}
             />
           )}
           contentContainerStyle={{ paddingVertical: 8 }}

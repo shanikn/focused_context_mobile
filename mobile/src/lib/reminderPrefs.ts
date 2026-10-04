@@ -1,9 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export const LOCATION_BUCKETS = ["unknown", "home", "uni", "work", "errands"] as const;
-
-export type LocationBucket = (typeof LOCATION_BUCKETS)[number];
-
 const KEYS = {
   location: "focusedcontext.reminder.location",
   enabled: "focusedcontext.reminder.enabled",
@@ -11,10 +7,6 @@ const KEYS = {
 };
 
 type NotifiedSlots = Record<string, string>;
-
-function isLocationBucket(value: string | null): value is LocationBucket {
-  return value !== null && LOCATION_BUCKETS.includes(value as LocationBucket);
-}
 
 async function getNotifiedSlots(): Promise<NotifiedSlots> {
   const raw = await AsyncStorage.getItem(KEYS.notifiedSlots);
@@ -29,12 +21,15 @@ async function getNotifiedSlots(): Promise<NotifiedSlots> {
   }
 }
 
-export async function getReminderLocation(): Promise<LocationBucket> {
-  const value = await AsyncStorage.getItem(KEYS.location);
-  return isLocationBucket(value) ? value : "unknown";
+// The current location: a place id, or "unknown" when not at a saved place.
+// Values stored before custom places ("home", "errands", ...) are mapped by
+// resolveCurrentLocation in lib/userPlaces once the places are loaded; the
+// backend also accepts the old names.
+export async function getReminderLocation(): Promise<string> {
+  return (await AsyncStorage.getItem(KEYS.location)) || "unknown";
 }
 
-export async function setReminderLocation(location: LocationBucket): Promise<void> {
+export async function setReminderLocation(location: string): Promise<void> {
   await AsyncStorage.setItem(KEYS.location, location);
 }
 
