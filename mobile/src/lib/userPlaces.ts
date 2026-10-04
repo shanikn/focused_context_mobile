@@ -22,10 +22,15 @@ export interface ServerPlace {
   kind: PlaceKind | null;
 }
 
+// how the location was set; missing on locations saved before this existed
+export type CoordsSource = "address" | "current";
+
 export interface PlaceCoords {
   latitude: number;
   longitude: number;
   radius: number; // meters
+  source?: CoordsSource;
+  address?: string; // only when set by address search
 }
 
 export interface UserPlace extends ServerPlace {
@@ -52,10 +57,17 @@ async function writeCoords(coords: Record<string, PlaceCoords>): Promise<void> {
 export async function setPlaceCoords(
   placeId: string,
   position: { latitude: number; longitude: number },
-  radius: number = DEFAULT_RADIUS_METERS
+  radius: number = DEFAULT_RADIUS_METERS,
+  origin?: { source: CoordsSource; address?: string }
 ): Promise<void> {
   const coords = await getAllCoords();
   coords[placeId] = { latitude: position.latitude, longitude: position.longitude, radius };
+  if (origin) {
+    coords[placeId].source = origin.source;
+    if (origin.source === "address" && origin.address) {
+      coords[placeId].address = origin.address;
+    }
+  }
   await writeCoords(coords);
 }
 
@@ -129,6 +141,21 @@ export function resolveCurrentLocation(stored: string | null, places: ServerPlac
     return stored;
   }
   return places.find((p) => p.kind !== null && p.kind === stored)?.id ?? UNKNOWN;
+}
+
+// The line under a place's name in Settings.
+export function placeLocationText(place: UserPlace): string {
+  const coords = place.coords;
+  if (!coords) {
+    return "No location set";
+  }
+  if (coords.source === "address" && coords.address?.trim()) {
+    return coords.address.trim();
+  }
+  if (coords.source === "current") {
+    return "Set from current location";
+  }
+  return "Location saved";
 }
 
 export function placeName(id: string, places: ServerPlace[]): string | null {

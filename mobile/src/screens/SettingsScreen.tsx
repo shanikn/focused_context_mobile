@@ -24,6 +24,7 @@ import { checkAndNotifyReminders, ensureNotificationPermissions } from "../servi
 import {
   removePlaceCoords,
   resolveCurrentLocation,
+  placeLocationText,
   setPlaceCoords,
   UNKNOWN,
   UserPlace,
@@ -104,7 +105,7 @@ export default function SettingsScreen() {
         const position = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
-        await setPlaceCoords(placeId, position.coords);
+        await setPlaceCoords(placeId, position.coords, undefined, { source: "current" });
         await afterPlacesChanged();
       } catch {
         Alert.alert("Couldn't get your location", "Check that location is on and try again.");
@@ -156,7 +157,7 @@ export default function SettingsScreen() {
     if (!place) {
       return;
     }
-    await setPlaceCoords(place.id, result);
+    await setPlaceCoords(place.id, result, undefined, { source: "address", address: result.label });
     setAddressFor(null);
     Alert.alert("Location saved", `${place.name}: ${result.label}`);
     await afterPlacesChanged();
@@ -368,8 +369,8 @@ export default function SettingsScreen() {
             <View style={styles.placeRow}>
               <View style={styles.rowText}>
                 <Text style={styles.placeName}>{place.name}</Text>
-                <Text style={styles.helperText}>
-                  {place.coords ? `Location saved, ${place.coords.radius} m radius` : "Location not set"}
+                <Text style={styles.helperText} numberOfLines={2}>
+                  {placeLocationText(place)}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setEditor({ place })}>

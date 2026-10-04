@@ -4,6 +4,7 @@ import {
   getAllCoords,
   mergePlaces,
   migrateLegacyPlaces,
+  placeLocationText,
   placeName,
   removePlaceCoords,
   resolveCurrentLocation,
@@ -134,4 +135,69 @@ describe("resolveCurrentLocation (the stored 'where am I' value)", () => {
 test("placeName looks a place up by id", () => {
   expect(placeName("id-gym", SERVER)).toBe("Gym");
   expect(placeName("nope", SERVER)).toBeNull();
+});
+
+describe("where a place's location came from", () => {
+  test("set by address search: the address is stored with the coordinates", async () => {
+    await setPlaceCoords("id-uni", { latitude: 32.176, longitude: 34.837 }, undefined, {
+      source: "address",
+      address: "Reichman University, Herzliya, Israel",
+    });
+    expect((await getAllCoords())["id-uni"]).toEqual({
+      latitude: 32.176,
+      longitude: 34.837,
+      radius: 150,
+      source: "address",
+      address: "Reichman University, Herzliya, Israel",
+    });
+  });
+
+  test("set from current location: no address, marked as current location", async () => {
+    await setPlaceCoords("id-home", { latitude: 1, longitude: 2 }, undefined, { source: "current" });
+    const c = (await getAllCoords())["id-home"];
+    expect(c.source).toBe("current");
+    expect(c.address).toBeUndefined();
+  });
+
+  test("setting again replaces the old address", async () => {
+    await setPlaceCoords("id-uni", { latitude: 1, longitude: 1 }, undefined, { source: "address", address: "Old" });
+    await setPlaceCoords("id-uni", { latitude: 2, longitude: 2 }, undefined, { source: "current" });
+    expect((await getAllCoords())["id-uni"].address).toBeUndefined();
+  });
+
+  test("mergePlaces keeps the address and source", async () => {
+    await setPlaceCoords("id-uni", { latitude: 1, longitude: 1 }, undefined, { source: "address", address: "Reichman" });
+    const uni = mergePlaces(SERVER, await getAllCoords()).find((p) => p.id === "id-uni")!;
+    expect(uni.coords?.address).toBe("Reichman");
+  });
+});
+
+describe("placeLocationText (the grey line under a place's name in Settings)", () => {
+  const place = (coords: unknown) => ({ ...UNI, coords }) as never;
+
+  test("address search: the address", () => {
+    expect(
+      placeLocationText(place({ latitude: 1, longitude: 1, radius: 150, source: "address", address: "Reichman University, Herzliya, Israel" }))
+    ).toBe("Reichman University, Herzliya, Israel");
+  });
+
+  test("current location", () => {
+    expect(placeLocationText(place({ latitude: 1, longitude: 1, radius: 150, source: "current" }))).toBe(
+      "Set from current location"
+    );
+  });
+
+  test("no location", () => {
+    expect(placeLocationText(place(null))).toBe("No location set");
+  });
+
+  test("saved before this was tracked (no source): just says it's saved", () => {
+    expect(placeLocationText(place({ latitude: 1, longitude: 1, radius: 150 }))).toBe("Location saved");
+  });
+
+  test("address search but the address is empty: falls back to 'Location saved'", () => {
+    expect(placeLocationText(place({ latitude: 1, longitude: 1, radius: 150, source: "address", address: "  " }))).toBe(
+      "Location saved"
+    );
+  });
 });
