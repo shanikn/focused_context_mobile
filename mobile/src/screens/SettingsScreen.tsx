@@ -149,18 +149,17 @@ export default function SettingsScreen() {
     await permissionFlow.start();
   };
 
-  const handleAddressPicked = async (result: AddressResult) => {
+  // "Save as <place>" in the address dialog. Errors propagate so the dialog
+  // stays open and shows them; on success it closes and confirms.
+  const handleAddressSave = async (result: AddressResult) => {
     const place = addressFor;
-    setAddressFor(null);
     if (!place) {
       return;
     }
-    try {
-      await setPlaceCoords(place.id, result);
-      await afterPlacesChanged();
-    } catch {
-      Alert.alert("Couldn't save the location", `Try again to set ${place.name}.`);
-    }
+    await setPlaceCoords(place.id, result);
+    setAddressFor(null);
+    Alert.alert("Location saved", `${place.name}: ${result.label}`);
+    await afterPlacesChanged();
   };
 
   const handleEditorSave = async (name: string, keywords: string[]) => {
@@ -478,7 +477,7 @@ export default function SettingsScreen() {
       <AddressSearchModal
         visible={addressFor !== null}
         placeName={addressFor?.name ?? ""}
-        onPick={handleAddressPicked}
+        onSave={handleAddressSave}
         onCancel={() => setAddressFor(null)}
       />
       <LocationPermissionModal
