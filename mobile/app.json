@@ -49,6 +49,13 @@
           "isAndroidBackgroundLocationEnabled": true,
           "locationAlwaysAndWhenInUsePermission": "FocusedContext uses your location to show the right notes when you arrive at your saved places."
         }
+      ],
+      "expo-font",
+      [
+        "expo-localization",
+        {
+          "supportsRTL": false
+        }
       ]
     ]
   }

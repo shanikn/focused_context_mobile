@@ -5,6 +5,12 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { useFonts } from "expo-font";
+import { BricolageGrotesque_700Bold } from "@expo-google-fonts/bricolage-grotesque/700Bold";
+import { Figtree_400Regular } from "@expo-google-fonts/figtree/400Regular";
+import { Figtree_500Medium } from "@expo-google-fonts/figtree/500Medium";
+import { Figtree_600SemiBold } from "@expo-google-fonts/figtree/600SemiBold";
+import { Figtree_700Bold } from "@expo-google-fonts/figtree/700Bold";
 
 import AuthProvider, { useAuth } from "./src/context/AuthContext";
 import LoginScreen from "./src/screens/LoginScreen";
@@ -70,6 +76,13 @@ function MainTabs() {
 
 function RootNavigator() {
   const { user, loading } = useAuth();
+  const [fontsLoaded] = useFonts({
+    BricolageGrotesque_700Bold,
+    Figtree_400Regular,
+    Figtree_500Medium,
+    Figtree_600SemiBold,
+    Figtree_700Bold,
+  });
   const isCheckingRef = useRef(false);
 
   useEffect(() => {
@@ -116,7 +129,7 @@ function RootNavigator() {
     };
   }, [user]);
 
-  if (loading) {
+  if (loading || !fontsLoaded) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
         <ActivityIndicator size="large" color="#2E7D32" />
