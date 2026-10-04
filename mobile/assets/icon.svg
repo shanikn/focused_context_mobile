@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Smart Mind app icon: a note (folded corner) with a location pin, and a
+       spark for the smart reminder. Primary #1F7A3A on #F3F5F0.
+       The #art group (no nested groups) is reused for the Android adaptive
+       foreground and monochrome icons; its bounding box is x 220-856,
+       y 98-830 (spark x up to 842), centered by the outer translate. -->
+  <rect id="background" width="1024" height="1024" fill="#F3F5F0"/>
+  <g transform="translate(-26 48)">
+  <g id="art">
+    <!-- the note, bottom-right corner folded -->
+    <path fill="#1F7A3A" d="M324 250 H616 A104 104 0 0 1 720 354 V710 L600 830 H324
+             A104 104 0 0 1 220 726 V354 A104 104 0 0 1 324 250 Z"/>
+    <path fill="#94BE9E" d="M720 710 L600 830 V746 A36 36 0 0 1 636 710 Z"/>
+    <!-- location pin, cut out of the note -->
+    <path fill="#F3F5F0" d="M470 700
+             C 418 632, 350 566, 350 470
+             A 120 120 0 1 1 590 470
+             C 590 566, 522 632, 470 700 Z"/>
+    <circle cx="470" cy="470" r="48" fill="#1F7A3A"/>
+    <!-- spark: four-point star beside the note's top-right corner -->
+    <path fill="#1F7A3A"
+          d="M742 112
+             C 753 180, 774 201, 842 212
+             C 774 223, 753 244, 742 312
+             C 731 244, 710 223, 642 212
+             C 710 201, 731 180, 742 112 Z"/>
+  </g>
+  </g>
+</svg>
