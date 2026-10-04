@@ -66,6 +66,9 @@ def categorize(content: str):
                         if _has_word(lower, x):
                             result = "idea"
                             break
+    # no keyword, but the note names a day or a time: it is scheduled
+    if result == "uncategorized" and (infer_date(content) or infer_time(content)):
+        result = "scheduled"
     logger.debug("categorize(%s) -> %s", content[:30], result)
     return result
 
@@ -112,9 +115,63 @@ def infer_time(content: str) -> Optional[str]:
     return None
 
 
+months = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5,
+    "june": 6, "july": 7, "august": 8, "september": 9, "october": 10,
+    "november": 11, "december": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7,
+    "aug": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+_month_pat = "(" + "|".join(sorted(months, key=len, reverse=True)) + r")\.?"
+_day_pat = r"(\d{1,2})(?:st|nd|rd|th)?"
+_year_pat = r"(?:,?\s+(\d{4}))?"
+# "9th of October", "9 Oct 2026"
+_day_month = re.compile(r"\b" + _day_pat + r"\s+(?:of\s+)?" + _month_pat + _year_pat + r"\b")
+# "October 9th", "Oct 9, 2026"
+_month_day = re.compile(r"\b" + _month_pat + r"\s+(?:the\s+)?" + _day_pat + _year_pat + r"\b")
+# "9/10" or "9/10/2026" (day first, as written in Israel)
+_numeric = re.compile(r"(?<![\d/])(\d{1,2})/(\d{1,2})(?:/(\d{2}|\d{4}))?(?![\d/])")
+
+
+def _calendar_date(content_lower: str, reference: datetime) -> Optional[str]:
+    """An absolute date written in the note; without a year, the next one to come."""
+    day = month = year = None
+    match = _day_month.search(content_lower)
+    if match:
+        day, month, year = int(match.group(1)), months[match.group(2)], match.group(3)
+    else:
+        match = _month_day.search(content_lower)
+        if match:
+            month, day, year = months[match.group(1)], int(match.group(2)), match.group(3)
+        else:
+            match = _numeric.search(content_lower)
+            if match:
+                day, month, year = int(match.group(1)), int(match.group(2)), match.group(3)
+    if day is None:
+        return None
+    if year is not None:
+        year = int(year)
+        if year < 100:
+            year += 2000
+    try:
+        date = datetime(year or reference.year, month, day)
+    except ValueError:
+        return None
+    if year is None and date.date() < reference.date():
+        try:
+            date = date.replace(year=reference.year + 1)
+        except ValueError:
+            return None
+    return date.strftime("%Y-%m-%d")
+
+
 def infer_date(content: str, now: Optional[datetime] = None) -> Optional[str]:
     content_lower = content.lower()
     reference = now or datetime.now()
+
+    calendar_date = _calendar_date(content_lower, reference)
+    if calendar_date:
+        return calendar_date
     days_pat = r"\bin\s+(\d+)\s+days?(?:\s+from\s+now)?\b"
     weeks_pat = r"\bin\s+(\d+)\s+weeks?(?:\s+from\s+now)?\b"
     in_days_match = re.search(days_pat, content_lower)
@@ -140,6 +197,9 @@ def infer_date(content: str, now: Optional[datetime] = None) -> Optional[str]:
 
     return None
 
+
+# alarm time for a note that names a day but no time
+DATE_ONLY_TIME = "08:00"
 
 # default reminder time for the built-in places; custom places have none
 location_time_defaults = {
