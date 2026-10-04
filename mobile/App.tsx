@@ -97,7 +97,7 @@ function MainTabs() {
         component={NotesStack}
         options={{ headerShown: false }}
       />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
     </Tab.Navigator>
   );
 }

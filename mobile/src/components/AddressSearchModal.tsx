@@ -13,6 +13,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { AddressResult, searchErrorMessage } from "../lib/nominatim";
 import { findAddress } from "../services/addressSearch";
+import { PrimaryButton, TextButton } from "./ui";
+import { colors, fonts, MIN_TOUCH_TARGET, radius, type } from "../theme";
 
 // Find a place's coordinates by address: search, tap a result to select it,
 // then "Save as <place>". Searches only when the user taps Search
@@ -105,7 +107,7 @@ export default function AddressSearchModal({
               disabled={!query.trim() || searching}
             >
               {searching ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={colors.onPrimary} />
               ) : (
                 <Text style={styles.searchText}>Search</Text>
               )}
@@ -137,7 +139,7 @@ export default function AddressSearchModal({
                       <Ionicons
                         name={on ? "radio-button-on" : "radio-button-off"}
                         size={20}
-                        color={on ? "#2E7D32" : "#999"}
+                        color={on ? colors.primary : colors.textMuted}
                       />
                       <Text style={[styles.resultText, on && styles.resultTextSelected]} numberOfLines={2}>
                         {r.label}
@@ -156,24 +158,20 @@ export default function AddressSearchModal({
             </View>
           )}
 
-          <TouchableOpacity
-            style={[styles.saveButton, (!selected || saving) && styles.disabled]}
+          <PrimaryButton
+            label={`Save as ${placeName}`}
             onPress={save}
-            disabled={!selected || saving}
-          >
-            {saving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.saveText}>{`Save as ${placeName}`}</Text>
-            )}
-          </TouchableOpacity>
+            disabled={!selected}
+            loading={saving}
+            style={styles.saveButton}
+          />
 
           <Text style={styles.attribution}>
             Address search: © OpenStreetMap contributors, via Nominatim. Your search text goes through our server to OpenStreetMap.
           </Text>
-          <TouchableOpacity style={styles.secondary} onPress={onCancel}>
-            <Text style={styles.secondaryText}>Cancel</Text>
-          </TouchableOpacity>
+          <View style={styles.cancelRow}>
+            <TextButton label="Cancel" onPress={onCancel} />
+          </View>
         </View>
       </View>
     </Modal>
@@ -185,31 +183,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
     justifyContent: "center",
-    padding: 24,
+    padding: 20,
   },
-  card: { backgroundColor: "#fff", borderRadius: 12, padding: 20, maxHeight: "90%" },
-  title: { fontSize: 18, fontWeight: "600", color: "#333", marginBottom: 12 },
+  card: { backgroundColor: colors.surface, borderRadius: radius.card, padding: 18, maxHeight: "90%" },
+  title: { fontFamily: fonts.display, fontSize: 20, color: colors.text, marginBottom: 12 },
   searchRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
   input: {
     flex: 1,
+    height: 48,
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    fontFamily: fonts.body,
     fontSize: 15,
+    color: colors.text,
   },
   searchButton: {
-    backgroundColor: "#2E7D32",
-    borderRadius: 8,
-    paddingHorizontal: 14,
+    height: 48,
+    backgroundColor: colors.primary,
+    borderRadius: radius.chip,
+    paddingHorizontal: 16,
     justifyContent: "center",
   },
   disabled: { opacity: 0.5 },
-  searchText: { color: "#fff", fontWeight: "600" },
-  error: { color: "#e53935", fontSize: 13, marginBottom: 8 },
-  empty: { color: "#777", fontSize: 13, marginBottom: 8 },
-  hint: { color: "#777", fontSize: 13, marginBottom: 6 },
+  searchText: { color: colors.onPrimary, fontFamily: fonts.bodyBold, fontSize: 15 },
+  error: { ...type.caption, color: colors.danger, marginBottom: 8 },
+  empty: { ...type.caption, marginBottom: 8 },
+  hint: { ...type.caption, marginBottom: 6 },
   // flexGrow 0 + maxHeight: the list takes the space it needs, up to 220,
   // and never collapses to zero height inside the dialog
   results: { flexGrow: 0, maxHeight: 220, marginBottom: 8 },
@@ -217,35 +218,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    minHeight: 48,
-    paddingHorizontal: 10,
+    minHeight: MIN_TOUCH_TARGET + 4,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: "#e0e0e0",
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: 14,
   },
-  resultSelected: { borderColor: "#2E7D32", backgroundColor: "#E8F5E9" },
-  resultText: { flex: 1, fontSize: 14, color: "#333" },
-  resultTextSelected: { fontWeight: "600", color: "#1B5E20" },
+  resultSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  resultText: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: colors.text },
+  resultTextSelected: { fontFamily: fonts.bodySemi, color: colors.primaryDark },
   selectedBox: {
-    backgroundColor: "#F5F5F5",
-    borderRadius: 8,
+    backgroundColor: colors.background,
+    borderRadius: 14,
     padding: 10,
     marginBottom: 10,
   },
-  selectedLabel: { fontSize: 12, color: "#777", marginBottom: 2 },
-  selectedText: { fontSize: 14, color: "#333" },
-  saveButton: {
-    backgroundColor: "#2E7D32",
-    borderRadius: 10,
-    minHeight: 48,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  saveText: { color: "#fff", fontSize: 15, fontWeight: "600" },
-  attribution: { fontSize: 11, color: "#999", marginTop: 4 },
-  secondary: { paddingVertical: 12, alignItems: "center" },
-  secondaryText: { color: "#666", fontSize: 14 },
+  selectedLabel: { ...type.caption, marginBottom: 2 },
+  selectedText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.text },
+  saveButton: { marginBottom: 8 },
+  attribution: { fontFamily: fonts.body, fontSize: 11, color: colors.textMuted, marginTop: 4 },
+  cancelRow: { alignItems: "center" },
 });

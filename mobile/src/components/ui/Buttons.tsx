@@ -34,6 +34,7 @@ export function PrimaryButton({
       disabled={off}
       accessibilityRole="button"
       accessibilityState={{ disabled: off, busy: loading }}
+      accessibilityLabel={label}
       testID={testID}
     >
       {loading ? (
@@ -66,6 +67,7 @@ export function TextButton({
       disabled={disabled}
       accessibilityRole="button"
       accessibilityState={{ disabled }}
+      accessibilityLabel={label}
     >
       <Text style={[styles.textLabel, destructive && styles.destructive]}>{label}</Text>
     </TouchableOpacity>

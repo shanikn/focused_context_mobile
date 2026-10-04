@@ -5,9 +5,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  Switch,
+  AlertButton,
   ScrollView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { useFocusEffect } from "@react-navigation/native";
 import { signOut } from "firebase/auth";
@@ -45,8 +47,9 @@ import {
   getCategoryColors,
   resetCategoryColor,
   setCategoryColor,
-  textColorFor,
 } from "../lib/categoryColors";
+import { Card, Chip, ChipRow, TextButton, ToggleRow } from "../components/ui";
+import { colors, fonts, MIN_TOUCH_TARGET, spacing, type } from "../theme";
 import { GrantedPermissions, locationStatus } from "../lib/locationPermissionFlow";
 import { getGrantedPermissions } from "../services/locationPermissions";
 import { syncGeofencing } from "../services/geofence";
@@ -331,166 +334,187 @@ export default function SettingsScreen() {
     }
   };
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.section}>
-        <Text style={styles.label}>Signed in as</Text>
-        <Text style={styles.email}>{user?.email}</Text>
-      </View>
+  // "Set location" (no location yet): the two ways to set one
+  const openSetLocation = (place: UserPlace) => {
+    Alert.alert(`Set ${place.name}'s location`, undefined, [
+      { text: "Use current location", onPress: () => handleUseCurrentLocation(place) },
+      { text: "Search address", onPress: () => setAddressFor(place) },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
 
-      <View style={styles.section}>
-        <View style={styles.row}>
-          <View style={styles.rowText}>
-            <Text style={styles.sectionTitle}>Phone notifications</Text>
-            <Text style={styles.helperText}>
-              Poll the backend and show local reminders on this phone.
-            </Text>
+  // ⋯ menu: every action for a place
+  const openPlaceMenu = (place: UserPlace) => {
+    const buttons: AlertButton[] = [
+      { text: "Use current location", onPress: () => handleUseCurrentLocation(place) },
+      { text: "Search address", onPress: () => setAddressFor(place) },
+      { text: "Rename", onPress: () => setEditor({ place }) },
+    ];
+    if (place.coords) {
+      buttons.push({ text: "Forget location", onPress: () => handleClearCoords(place) });
+    }
+    buttons.push(
+      { text: "Delete", style: "destructive", onPress: () => handleDeletePlace(place) },
+      { text: "Cancel", style: "cancel" }
+    );
+    Alert.alert(place.name, undefined, buttons);
+  };
+
+  return (
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Text style={[type.screenTitle, styles.title]}>Settings</Text>
+
+        <Card
+          title="Where you are now"
+          helper="Set automatically when you arrive at a saved place. Tap to override."
+        >
+          <ChipRow style={styles.chips}>
+            {[...places, { id: UNKNOWN, name: "Not at a place" }].map((option) => {
+              const selected = location === option.id;
+              return (
+                <Chip
+                  key={option.id}
+                  label={option.name}
+                  selected={selected}
+                  icon={selected ? "location-outline" : undefined}
+                  onPress={() => handleSelectLocation(option.id)}
+                />
+              );
+            })}
+          </ChipRow>
+        </Card>
+
+        <Card title="Saved places" helper="Names sync to your account. Locations stay on this phone.">
+          {status && (
+            <Text style={[type.caption, status.mode === "manual" && styles.statusManual]}>{status.message}</Text>
+          )}
+          {status?.mode === "manual" && (
+            <TextButton label="Turn on automatic location" onPress={() => permissionFlow.start()} />
+          )}
+          {places.map((place) => {
+            const isSet = place.coords !== null;
+            const saving = savingPlaceId === place.id;
+            return (
+              <View key={place.id} style={styles.placeRow}>
+                <View style={styles.placeTop}>
+                  <View
+                    style={[
+                      styles.placeIcon,
+                      { backgroundColor: isSet ? colors.primarySoft : colors.chip },
+                    ]}
+                  >
+                    <Ionicons
+                      name="location-outline"
+                      size={20}
+                      color={isSet ? colors.primaryDark : colors.textMuted}
+                    />
+                  </View>
+                  <View style={styles.placeText}>
+                    <Text style={type.body} numberOfLines={1}>
+                      {place.name}
+                    </Text>
+                    <Text style={type.caption} numberOfLines={2}>
+                      {saving ? "Getting your location…" : placeSubtitle(place)}
+                    </Text>
+                  </View>
+                  {!isSet && (
+                    <TouchableOpacity
+                      style={styles.setLocation}
+                      onPress={() => openSetLocation(place)}
+                      disabled={savingPlaceId !== null}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Set location for ${place.name}`}
+                    >
+                      <Text style={styles.setLocationText}>Set location</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={styles.menuButton}
+                    onPress={() => openPlaceMenu(place)}
+                    disabled={savingPlaceId !== null}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${place.name} options`}
+                  >
+                    <Ionicons name="ellipsis-vertical" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+                {place.coords && (
+                  <View style={styles.radiusRow}>
+                    <Text style={type.caption}>Radius</Text>
+                    <ChipRow>
+                      {RADIUS_CHOICES.map((r) => (
+                        <Chip
+                          key={r}
+                          label={`${r} m`}
+                          selected={place.coords?.radius === r}
+                          onPress={() => handleSetRadius(place, r)}
+                          accessibilityLabel={`${place.name} radius ${r} m`}
+                        />
+                      ))}
+                    </ChipRow>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+          <View style={styles.addPlaceRow}>
+            <TextButton label="+ Add place" onPress={() => setEditor({ place: null })} />
           </View>
-          <Switch
+        </Card>
+
+        <Card title="Category colors">
+          {CATEGORIES.map((category, i) => {
+            const color = categoryColors[category];
+            return (
+              <TouchableOpacity
+                key={category}
+                style={[styles.colorRow, i > 0 && styles.rowDivider]}
+                onPress={() => setColorFor(category)}
+                accessibilityRole="button"
+                accessibilityLabel={`${category} color`}
+              >
+                <View style={[styles.swatch, { backgroundColor: color }]} />
+                <Text style={[type.body, styles.colorName]}>
+                  {category.charAt(0).toUpperCase() + category.slice(1)}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            );
+          })}
+        </Card>
+
+        <Card>
+          <ToggleRow
+            title="Phone notifications"
+            caption="Show reminders on this phone."
             value={notificationsEnabled}
             onValueChange={handleToggleNotifications}
-            trackColor={{ false: "#d7d7d7", true: "#A5D6A7" }}
-            thumbColor={notificationsEnabled ? "#2E7D32" : "#f4f4f4"}
           />
-        </View>
-        <TouchableOpacity
-          style={[styles.checkButton, checkingNow && styles.checkButtonDisabled]}
-          onPress={handleCheckNow}
-          disabled={checkingNow}
-        >
-          <Text style={styles.checkButtonText}>
-            {checkingNow ? "Checking..." : "Check alerts now"}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Saved places</Text>
-        <Text style={styles.helperText}>
-          Your places. Names sync to your account; where each place is stays on this phone.
-        </Text>
-        {status && (
-          <Text style={[styles.statusText, status.mode === "manual" && styles.statusManual]}>
-            {status.message}
-          </Text>
-        )}
-        {status?.mode === "manual" && (
-          <TouchableOpacity style={styles.linkButton} onPress={() => permissionFlow.start()}>
-            <Text style={styles.linkButtonText}>Turn on automatic location</Text>
+          <TouchableOpacity
+            style={[styles.checkRow, checkingNow && styles.dimmed]}
+            onPress={handleCheckNow}
+            disabled={checkingNow}
+            accessibilityRole="button"
+            accessibilityLabel="Check alerts now"
+          >
+            <Ionicons name="refresh-outline" size={20} color={colors.primaryDark} />
+            <Text style={[type.body, styles.checkText]}>
+              {checkingNow ? "Checking…" : "Check alerts now"}
+            </Text>
           </TouchableOpacity>
-        )}
-        {places.map((place) => (
-          <View key={place.id} style={styles.placeBlock}>
-            <View style={styles.placeRow}>
-              <View style={styles.rowText}>
-                <Text style={styles.placeName}>{place.name}</Text>
-                <Text style={styles.helperText} numberOfLines={2}>
-                  {placeSubtitle(place)}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setEditor({ place })}>
-                <Text style={styles.linkSmall}>Rename</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDeletePlace(place)}>
-                <Text style={styles.removeText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-            {place.coords && (
-              <View style={styles.radiusRow} accessibilityLabel={`${place.name} radius`}>
-                <Text style={styles.radiusLabel}>Radius</Text>
-                {RADIUS_CHOICES.map((r) => {
-                  const on = place.coords?.radius === r;
-                  return (
-                    <TouchableOpacity
-                      key={r}
-                      style={[styles.radiusChip, on && styles.radiusChipOn]}
-                      onPress={() => handleSetRadius(place, r)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: on }}
-                    >
-                      <Text style={[styles.radiusChipText, on && styles.radiusChipTextOn]}>{r} m</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-            <View style={styles.placeActions}>
-              <TouchableOpacity
-                style={[styles.placeButton, savingPlaceId !== null && styles.checkButtonDisabled]}
-                onPress={() => handleUseCurrentLocation(place)}
-                disabled={savingPlaceId !== null}
-              >
-                <Text style={styles.placeButtonText}>
-                  {savingPlaceId === place.id ? "Saving..." : "Use current location"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.placeButtonOutline}
-                onPress={() => setAddressFor(place)}
-              >
-                <Text style={styles.placeButtonOutlineText}>Search address</Text>
-              </TouchableOpacity>
-              {place.coords && (
-                <TouchableOpacity onPress={() => handleClearCoords(place)}>
-                  <Text style={styles.linkSmall}>Forget</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+        </Card>
+
+        <Card>
+          <Text style={type.caption}>Signed in as</Text>
+          <Text style={type.body} numberOfLines={1} ellipsizeMode="tail">
+            {user?.email}
+          </Text>
+          <View style={styles.signOutRow}>
+            <TextButton label="Sign out" destructive onPress={handleSignOut} />
           </View>
-        ))}
-        <TouchableOpacity style={styles.addPlaceButton} onPress={() => setEditor({ place: null })}>
-          <Text style={styles.addPlaceText}>+ Add place</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Current reminder context</Text>
-        <Text style={styles.helperText}>
-          Manual fallback and override: pick where you are now.
-        </Text>
-        <View style={styles.pillWrap}>
-          {[{ id: UNKNOWN, name: "Not at a place" }, ...places].map((option) => (
-            <TouchableOpacity
-              key={option.id}
-              style={[styles.pill, location === option.id && styles.pillActive]}
-              onPress={() => handleSelectLocation(option.id)}
-            >
-              <Text style={[styles.pillText, location === option.id && styles.pillTextActive]}>
-                {option.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Category colors</Text>
-        <Text style={styles.helperText}>
-          Tap a category to change its color. Saved on this phone.
-        </Text>
-        {CATEGORIES.map((category) => {
-          const color = categoryColors[category];
-          return (
-            <TouchableOpacity
-              key={category}
-              style={styles.colorRow}
-              onPress={() => setColorFor(category)}
-            >
-              <Text style={[styles.colorBadge, { backgroundColor: color, color: textColorFor(color) }]}>
-                {category}
-              </Text>
-              <Text style={styles.colorHex}>
-                {color}
-                {color === DEFAULT_CATEGORY_COLORS[category] ? "  (default)" : ""}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-        <Text style={styles.signOutText}>Sign Out</Text>
-      </TouchableOpacity>
+        </Card>
+      </ScrollView>
 
       <CategoryColorModal
         visible={colorFor !== null}
@@ -520,239 +544,63 @@ export default function SettingsScreen() {
         onContinue={permissionFlow.proceed}
         onSkip={permissionFlow.skip}
       />
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
-  content: {
-    padding: 16,
-  },
-  section: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 16,
-    marginBottom: 16,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 16,
-  },
-  rowText: {
-    flex: 1,
-  },
-  label: {
-    fontSize: 13,
-    color: "#999",
-    marginBottom: 4,
-  },
-  email: {
-    fontSize: 16,
-    color: "#333",
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 4,
-  },
-  helperText: {
-    fontSize: 13,
-    color: "#777",
-    lineHeight: 18,
-  },
-  pillWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 12,
-  },
-  pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 18,
-    backgroundColor: "#f1f1f1",
-  },
-  pillActive: {
-    backgroundColor: "#2E7D32",
-  },
-  pillText: {
-    fontSize: 14,
-    color: "#666",
-    textTransform: "capitalize",
-  },
-  pillTextActive: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  statusText: {
-    fontSize: 13,
-    color: "#2E7D32",
-    lineHeight: 18,
-    marginTop: 10,
-  },
-  statusManual: {
-    color: "#B26A00",
-  },
-  linkButton: {
-    marginTop: 6,
-    alignSelf: "flex-start",
-  },
-  linkButtonText: {
-    color: "#2E7D32",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  placeBlock: {
-    marginTop: 14,
-    paddingTop: 12,
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.screen, gap: spacing.cardGap },
+  title: { marginBottom: 4 },
+  chips: { marginTop: 10 },
+  statusManual: { color: colors.danger, marginTop: 4 },
+  placeRow: {
+    paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: "#f0f0f0",
+    borderTopColor: colors.border,
   },
-  radiusRow: {
-    flexDirection: "row",
+  placeTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  placeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 8,
-  },
-  radiusLabel: {
-    fontSize: 13,
-    color: "#777",
-    marginRight: 2,
-  },
-  radiusChip: {
-    minHeight: 32,
-    paddingHorizontal: 10,
-    borderRadius: 16,
-    backgroundColor: "#f1f1f1",
     justifyContent: "center",
   },
-  radiusChipOn: {
-    backgroundColor: "#2E7D32",
+  placeText: { flex: 1 },
+  setLocation: {
+    minHeight: 32,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: colors.primarySoft,
+    justifyContent: "center",
   },
-  radiusChipText: {
-    fontSize: 13,
-    color: "#555",
+  setLocationText: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.primaryDark },
+  menuButton: {
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
+    borderRadius: MIN_TOUCH_TARGET / 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  radiusChipTextOn: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  placeActions: {
+  radiusRow: { marginTop: 10, marginLeft: 52, gap: 6 },
+  addPlaceRow: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 4 },
+  colorRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: MIN_TOUCH_TARGET + 4 },
+  rowDivider: { borderTopWidth: 1, borderTopColor: colors.border },
+  swatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
+  colorName: { flex: 1 },
+  checkRow: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
     gap: 10,
-    marginTop: 8,
-  },
-  placeButtonOutline: {
+    minHeight: MIN_TOUCH_TARGET + 4,
+    marginTop: 12,
+    paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: "#2E7D32",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    borderColor: colors.border,
+    borderRadius: 14,
   },
-  placeButtonOutlineText: {
-    color: "#2E7D32",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  linkSmall: {
-    color: "#2E7D32",
-    fontSize: 13,
-  },
-  addPlaceButton: {
-    marginTop: 16,
-    alignSelf: "flex-start",
-  },
-  addPlaceText: {
-    color: "#2E7D32",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  placeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  placeName: {
-    fontSize: 15,
-    color: "#333",
-    fontWeight: "500",
-  },
-  placeButton: {
-    flexShrink: 1,
-    maxWidth: 170,
-    backgroundColor: "#2E7D32",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  placeButtonText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  removeText: {
-    color: "#e53935",
-    fontSize: 13,
-  },
-  colorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#f0f0f0",
-    marginTop: 4,
-  },
-  colorBadge: {
-    fontSize: 13,
-    fontWeight: "600",
-    textTransform: "capitalize",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-    overflow: "hidden",
-  },
-  colorHex: {
-    fontSize: 12,
-    color: "#999",
-  },
-  signOutButton: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 16,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#e53935",
-  },
-  signOutText: {
-    color: "#e53935",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  checkButton: {
-    marginTop: 14,
-    backgroundColor: "#2E7D32",
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  checkButtonDisabled: {
-    opacity: 0.7,
-  },
-  checkButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-  },
+  checkText: { color: colors.primaryDark },
+  dimmed: { opacity: 0.5 },
+  signOutRow: { marginTop: 4, alignItems: "flex-start" },
 });
