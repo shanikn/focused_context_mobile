@@ -155,8 +155,12 @@ export default function SettingsScreen() {
     if (!place) {
       return;
     }
-    await setPlaceCoords(place.id, result);
-    await afterPlacesChanged();
+    try {
+      await setPlaceCoords(place.id, result);
+      await afterPlacesChanged();
+    } catch {
+      Alert.alert("Couldn't save the location", `Try again to set ${place.name}.`);
+    }
   };
 
   const handleEditorSave = async (name: string, keywords: string[]) => {

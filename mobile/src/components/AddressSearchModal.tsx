@@ -8,6 +8,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  Keyboard,
 } from "react-native";
 import { AddressResult, searchErrorMessage } from "../lib/nominatim";
 import { findAddress } from "../services/addressSearch";
@@ -42,6 +43,8 @@ export default function AddressSearchModal({
     if (!query.trim() || searching) {
       return;
     }
+    // close the keyboard so the results aren't hidden behind it
+    Keyboard.dismiss();
     setSearching(true);
     setError(null);
     try {
@@ -83,7 +86,9 @@ export default function AddressSearchModal({
           {error && <Text style={styles.error}>{error}</Text>}
           {results && results.length === 0 && <Text style={styles.empty}>No matches.</Text>}
           {results && results.length > 0 && (
-            <ScrollView style={styles.results}>
+            // "handled": with the keyboard still open, the first tap on a
+            // result must pick it, not just close the keyboard
+            <ScrollView style={styles.results} keyboardShouldPersistTaps="handled">
               {results.map((r) => (
                 <TouchableOpacity
                   key={`${r.latitude},${r.longitude},${r.label}`}
