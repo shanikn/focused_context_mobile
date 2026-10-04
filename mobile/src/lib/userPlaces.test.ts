@@ -1,10 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { regionsFromPlaces } from "./geofenceLogic";
 import {
   DEFAULT_RADIUS_METERS,
   getAllCoords,
   mergePlaces,
   migrateLegacyPlaces,
   placeLocationText,
+  placeSubtitle,
+  RADIUS_CHOICES,
+  setPlaceRadius,
   placeName,
   removePlaceCoords,
   resolveCurrentLocation,
@@ -28,11 +32,11 @@ describe("coordinates on the phone, by place id", () => {
     expect(await getAllCoords()).toEqual({});
   });
 
-  test("setPlaceCoords stores coordinates with the default 150 m radius", async () => {
+  test("setPlaceCoords stores coordinates with the default 200 m radius", async () => {
     await setPlaceCoords("id-gym", { latitude: 32.1, longitude: 34.8 });
-    expect(DEFAULT_RADIUS_METERS).toBe(150);
+    expect(DEFAULT_RADIUS_METERS).toBe(200);
     expect(await getAllCoords()).toEqual({
-      "id-gym": { latitude: 32.1, longitude: 34.8, radius: 150 },
+      "id-gym": { latitude: 32.1, longitude: 34.8, radius: 200 },
     });
   });
 
@@ -41,7 +45,7 @@ describe("coordinates on the phone, by place id", () => {
     await setPlaceCoords("id-home", { latitude: 2, longitude: 2 }, 300);
     await setPlaceCoords("id-gym", { latitude: 3, longitude: 3 });
     expect(await getAllCoords()).toEqual({
-      "id-gym": { latitude: 3, longitude: 3, radius: 150 },
+      "id-gym": { latitude: 3, longitude: 3, radius: 200 },
       "id-home": { latitude: 2, longitude: 2, radius: 300 },
     });
   });
@@ -146,7 +150,7 @@ describe("where a place's location came from", () => {
     expect((await getAllCoords())["id-uni"]).toEqual({
       latitude: 32.176,
       longitude: 34.837,
-      radius: 150,
+      radius: 200,
       source: "address",
       address: "Reichman University, Herzliya, Israel",
     });
@@ -199,5 +203,78 @@ describe("placeLocationText (the grey line under a place's name in Settings)", (
     expect(placeLocationText(place({ latitude: 1, longitude: 1, radius: 150, source: "address", address: "  " }))).toBe(
       "Location saved"
     );
+  });
+});
+
+describe("adjustable radius per place", () => {
+  test("choices are 100, 200, 400 and 800 m; the default is 200", () => {
+    expect(RADIUS_CHOICES).toEqual([100, 200, 400, 800]);
+    expect(DEFAULT_RADIUS_METERS).toBe(200);
+  });
+
+  test("setPlaceRadius changes only that place's radius and keeps its location and address", async () => {
+    await setPlaceCoords("id-uni", { latitude: 1, longitude: 2 }, undefined, { source: "address", address: "Reichman" });
+    await setPlaceCoords("id-home", { latitude: 3, longitude: 4 });
+    await setPlaceRadius("id-uni", 400);
+    const all = await getAllCoords();
+    expect(all["id-uni"]).toEqual({ latitude: 1, longitude: 2, radius: 400, source: "address", address: "Reichman" });
+    expect(all["id-home"].radius).toBe(200);
+  });
+
+  test("only the four choices are accepted", async () => {
+    await setPlaceCoords("id-uni", { latitude: 1, longitude: 2 });
+    await expect(setPlaceRadius("id-uni", 150)).rejects.toThrow();
+    await expect(setPlaceRadius("id-uni", 0)).rejects.toThrow();
+    expect((await getAllCoords())["id-uni"].radius).toBe(200);
+  });
+
+  test("a place without a location can't get a radius", async () => {
+    await expect(setPlaceRadius("id-gym", 400)).rejects.toThrow();
+    expect(await getAllCoords()).toEqual({});
+  });
+
+  test("setting the location again keeps the radius the user chose", async () => {
+    await setPlaceCoords("id-uni", { latitude: 1, longitude: 2 });
+    await setPlaceRadius("id-uni", 800);
+    await setPlaceCoords("id-uni", { latitude: 5, longitude: 6 }, undefined, { source: "current" });
+    expect((await getAllCoords())["id-uni"].radius).toBe(800);
+  });
+
+  test("an explicit radius when setting the location still wins", async () => {
+    await setPlaceCoords("id-uni", { latitude: 1, longitude: 2 });
+    await setPlaceRadius("id-uni", 800);
+    await setPlaceCoords("id-uni", { latitude: 5, longitude: 6 }, 100);
+    expect((await getAllCoords())["id-uni"].radius).toBe(100);
+  });
+
+  test("the chosen radius is what the geofence region uses", async () => {
+    await setPlaceCoords("id-uni", { latitude: 1, longitude: 2 });
+    await setPlaceRadius("id-uni", 400);
+    const regions = regionsFromPlaces(mergePlaces(SERVER, await getAllCoords()));
+    expect(regions).toEqual([expect.objectContaining({ identifier: "id-uni", radius: 400 })]);
+  });
+});
+
+describe("placeSubtitle (address and radius under the place's name)", () => {
+  const place = (coords: unknown) => ({ ...UNI, coords }) as never;
+
+  test("address · radius", () => {
+    expect(
+      placeSubtitle(place({ latitude: 1, longitude: 1, radius: 400, source: "address", address: "Reichman University, Herzliya, Israel" }))
+    ).toBe("Reichman University, Herzliya, Israel · 400 m");
+  });
+
+  test("current location · radius", () => {
+    expect(placeSubtitle(place({ latitude: 1, longitude: 1, radius: 200, source: "current" }))).toBe(
+      "Set from current location · 200 m"
+    );
+  });
+
+  test("an older location keeps its stored radius", () => {
+    expect(placeSubtitle(place({ latitude: 1, longitude: 1, radius: 150 }))).toBe("Location saved · 150 m");
+  });
+
+  test("no location: no radius", () => {
+    expect(placeSubtitle(place(null))).toBe("No location set");
   });
 });

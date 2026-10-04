@@ -24,7 +24,9 @@ import { checkAndNotifyReminders, ensureNotificationPermissions } from "../servi
 import {
   removePlaceCoords,
   resolveCurrentLocation,
-  placeLocationText,
+  placeSubtitle,
+  RADIUS_CHOICES,
+  setPlaceRadius,
   setPlaceCoords,
   UNKNOWN,
   UserPlace,
@@ -179,6 +181,19 @@ export default function SettingsScreen() {
         "Couldn't save the place",
         taken ? `You already have a place named "${name}".` : "Check your connection and try again."
       );
+    }
+  };
+
+  // a new radius re-registers the geofences (afterPlacesChanged -> syncGeofencing)
+  const handleSetRadius = async (place: UserPlace, radius: number) => {
+    if (place.coords?.radius === radius) {
+      return;
+    }
+    try {
+      await setPlaceRadius(place.id, radius);
+      await afterPlacesChanged();
+    } catch {
+      Alert.alert("Couldn't change the radius", "Try again.");
     }
   };
 
@@ -370,7 +385,7 @@ export default function SettingsScreen() {
               <View style={styles.rowText}>
                 <Text style={styles.placeName}>{place.name}</Text>
                 <Text style={styles.helperText} numberOfLines={2}>
-                  {placeLocationText(place)}
+                  {placeSubtitle(place)}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setEditor({ place })}>
@@ -380,6 +395,25 @@ export default function SettingsScreen() {
                 <Text style={styles.removeText}>Delete</Text>
               </TouchableOpacity>
             </View>
+            {place.coords && (
+              <View style={styles.radiusRow} accessibilityLabel={`${place.name} radius`}>
+                <Text style={styles.radiusLabel}>Radius</Text>
+                {RADIUS_CHOICES.map((r) => {
+                  const on = place.coords?.radius === r;
+                  return (
+                    <TouchableOpacity
+                      key={r}
+                      style={[styles.radiusChip, on && styles.radiusChipOn]}
+                      onPress={() => handleSetRadius(place, r)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                    >
+                      <Text style={[styles.radiusChipText, on && styles.radiusChipTextOn]}>{r} m</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
             <View style={styles.placeActions}>
               <TouchableOpacity
                 style={[styles.placeButton, savingPlaceId !== null && styles.checkButtonDisabled]}
@@ -580,6 +614,36 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: "#f0f0f0",
+  },
+  radiusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 8,
+  },
+  radiusLabel: {
+    fontSize: 13,
+    color: "#777",
+    marginRight: 2,
+  },
+  radiusChip: {
+    minHeight: 32,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    backgroundColor: "#f1f1f1",
+    justifyContent: "center",
+  },
+  radiusChipOn: {
+    backgroundColor: "#2E7D32",
+  },
+  radiusChipText: {
+    fontSize: 13,
+    color: "#555",
+  },
+  radiusChipTextOn: {
+    color: "#fff",
+    fontWeight: "600",
   },
   placeActions: {
     flexDirection: "row",
