@@ -237,8 +237,10 @@ def get_reminders_endpoint(
 _GEOCODE_STATUS = {"rate_limited": 429, "network": 504}
 
 
-@app.get("/geocode/")
-def geocode_search(q: str, authorization: Optional[str] = Header(None)):
+@app.get("/places/search")
+def search_places(q: str, authorization: Optional[str] = Header(None)):
+    """Top 5 address matches for q, via Nominatim (coordinates are only
+    returned to the phone, never stored here)."""
     require_user_id(authorization)
     try:
         return geocode.search(q)

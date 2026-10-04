@@ -130,7 +130,7 @@ def test_errors_are_not_cached(upstream):
 # ---- API ----
 
 def test_geocode_endpoint(upstream):
-    res = client.get("/geocode/", params={"q": "Reichman University"})
+    res = client.get("/places/search", params={"q": "Reichman University"})
     assert res.status_code == 200
     assert res.json()[0]["latitude"] == pytest.approx(32.1762529)
 
@@ -141,7 +141,7 @@ def test_geocode_endpoint(upstream):
 def test_geocode_endpoint_maps_upstream_errors(upstream, code, kind, expected):
     _, state = upstream
     state["error"] = urllib.error.HTTPError("u", code, "x", {}, io.BytesIO(b""))
-    res = client.get("/geocode/", params={"q": "x"})
+    res = client.get("/places/search", params={"q": "x"})
     assert res.status_code == expected
     assert res.json()["detail"] == {"kind": kind, "upstream_status": code}
 
@@ -149,6 +149,39 @@ def test_geocode_endpoint_maps_upstream_errors(upstream, code, kind, expected):
 def test_geocode_endpoint_unreachable_is_504(upstream):
     _, state = upstream
     state["error"] = urllib.error.URLError("timed out")
-    res = client.get("/geocode/", params={"q": "x"})
+    res = client.get("/places/search", params={"q": "x"})
     assert res.status_code == 504
     assert res.json()["detail"]["kind"] == "network"
+
+
+def test_cache_is_short_lived(monkeypatch, upstream):
+    calls, _ = upstream
+    now = [1000.0]
+    monkeypatch.setattr(geocode, "_now", lambda: now[0])
+    geocode.search("Reichman University")
+    now[0] += 5 * 60
+    geocode.search("Reichman University")
+    assert len(calls) == 1  # 5 minutes later: cached
+    now[0] += 6 * 60
+    geocode.search("Reichman University")
+    assert len(calls) == 2  # 11 minutes after the first: asked again
+    assert geocode.CACHE_TTL_SECONDS == 10 * 60
+
+
+def test_returns_at_most_five_results(upstream):
+    calls, state = upstream
+    state["body"] = [{"display_name": f"r{i}", "lat": "1", "lon": "2"} for i in range(8)]
+    assert len(geocode.search("many")) == 5
+    assert "limit=5" in calls[0].full_url
+
+
+def test_places_search_requires_sign_in(monkeypatch, upstream):
+    import api.main as main
+    monkeypatch.setattr(main, "get_user_id", lambda authorization: None)
+    assert client.get("/places/search", params={"q": "x"}).status_code == 401
+
+
+def test_places_search_does_not_clash_with_place_routes(upstream):
+    # GET /places/ still lists places; /places/search is the search
+    assert isinstance(client.get("/places/").json(), list)
+    assert client.get("/places/search", params={"q": "Reichman University"}).status_code == 200

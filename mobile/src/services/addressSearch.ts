@@ -2,10 +2,10 @@ import { ApiError } from "../api/client";
 import { geocodeViaBackend } from "../api/geocode";
 import { AddressResult, AddressSearchError, cleanQuery, searchAddress } from "../lib/nominatim";
 
-// Address search for the app. Goes through our backend (/geocode/), which
+// Address search for the app. Goes through our backend (/places/search), which
 // talks to Nominatim with the server's identity, rate limit and cache.
 // Falls back to calling Nominatim from the phone only when the backend is
-// an older version without /geocode/ (404).
+// an older version without /places/search (404).
 
 interface Deps {
   viaBackend: (query: string) => Promise<AddressResult[]>;

@@ -3,7 +3,7 @@
 The phone asks our backend, and the backend asks Nominatim, following its
 usage policy (https://operations.osmfoundation.org/policies/nominatim/):
 an identifying User-Agent, at most one request per second for the whole
-server, and caching of repeated queries.
+server, and a short cache of repeated queries.
 """
 import json
 import re
@@ -19,11 +19,11 @@ USER_AGENT = "FocusedContext/1.0 (university project; contextmind-api.azurewebsi
 MAX_RESULTS = 5
 TIMEOUT_SECONDS = 10
 MIN_INTERVAL_SECONDS = 1.0
-CACHE_TTL_SECONDS = 24 * 3600
+CACHE_TTL_SECONDS = 10 * 60
 CACHE_MAX_ENTRIES = 500
 
 # invisible bidi control characters a Hebrew keyboard or copied RTL text adds
-_BIDI_CONTROLS = re.compile("[‎‏‪-‮⁦-⁩]")
+_BIDI_CONTROLS = re.compile("[\u200e\u200f\u202a-\u202e\u2066-\u2069]")
 
 _lock = threading.Lock()
 _last_request = float("-inf")
@@ -67,7 +67,7 @@ def _parse(raw) -> list:
             continue
         if isinstance(label, str) and abs(lat) <= 90 and abs(lon) <= 180:
             results.append({"label": label, "latitude": lat, "longitude": lon})
-    return results
+    return results[:MAX_RESULTS]
 
 
 def _fetch(query: str) -> list:
