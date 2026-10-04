@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   ScrollView,
 } from "react-native";
-import { AddressResult, searchAddress } from "../lib/nominatim";
+import { AddressResult, searchAddress, searchErrorMessage } from "../lib/nominatim";
 
 // Find a place's coordinates by address. Searches only when the user taps
 // Search (Nominatim policy: no search-as-you-type).
@@ -45,8 +45,8 @@ export default function AddressSearchModal({
     setError(null);
     try {
       setResults(await searchAddress(query));
-    } catch {
-      setError("Search failed. Check your connection and try again.");
+    } catch (e) {
+      setError(searchErrorMessage(e));
     } finally {
       setSearching(false);
     }

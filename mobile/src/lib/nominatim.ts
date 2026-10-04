@@ -13,9 +13,17 @@ export interface AddressResult {
   longitude: number;
 }
 
+// invisible bidi control characters (LRM/RLM, embeddings, isolates) that a
+// Hebrew keyboard or copied RTL text can add; they make Nominatim miss
+const BIDI_CONTROLS = /[‎‏‪-‮⁦-⁩]/g;
+
+export function cleanQuery(query: string): string {
+  return query.replace(BIDI_CONTROLS, "").replace(/\s+/g, " ").trim();
+}
+
 export function buildSearchUrl(query: string): string {
   const params = new URLSearchParams({
-    q: query.trim(),
+    q: cleanQuery(query),
     format: "jsonv2",
     limit: String(MAX_RESULTS),
   });
@@ -65,20 +73,95 @@ export function createRateLimiter(
 
 const defaultLimiter = createRateLimiter(1000);
 
+const DEFAULT_TIMEOUT_MS = 15000;
+
+export type AddressSearchErrorKind =
+  | "blocked" // 403: Nominatim refused the request
+  | "rate_limited" // 429
+  | "http" // any other non-2xx status
+  | "network" // no response at all: offline, DNS, TLS/certificate
+  | "timeout"
+  | "bad_response"; // a 2xx that isn't the expected JSON
+
+export class AddressSearchError extends Error {
+  kind: AddressSearchErrorKind;
+  status?: number;
+  detail?: string;
+
+  constructor(kind: AddressSearchErrorKind, message: string, status?: number, detail?: string) {
+    super(message);
+    this.name = "AddressSearchError";
+    this.kind = kind;
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+// What to show the user: the actual reason, not a generic "check your connection".
+export function searchErrorMessage(error: unknown): string {
+  if (error instanceof AddressSearchError) {
+    switch (error.kind) {
+      case "blocked":
+        return `The address service refused the request (HTTP ${error.status}).`;
+      case "rate_limited":
+        return "Too many address searches. Wait a moment and try again.";
+      case "http":
+        return `The address service had a problem (HTTP ${error.status}). Try again later.`;
+      case "network":
+        return `Couldn't reach the address service (${error.detail}). Check your connection.`;
+      case "timeout":
+        return "The address service took too long to answer. Try again.";
+      case "bad_response":
+        return "The address service sent an unexpected answer. Try again later.";
+    }
+  }
+  return `Address search failed: ${error instanceof Error ? error.message : String(error)}`;
+}
+
 export async function searchAddress(
   query: string,
   fetchFn: typeof fetch = fetch,
-  limiter: () => Promise<void> = defaultLimiter
+  limiter: () => Promise<void> = defaultLimiter,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
 ): Promise<AddressResult[]> {
-  if (!query.trim()) {
+  if (!cleanQuery(query)) {
     return [];
   }
   await limiter();
-  const response = await fetchFn(buildSearchUrl(query), {
-    headers: { "User-Agent": NOMINATIM_USER_AGENT, Accept: "application/json" },
-  });
-  if (!response.ok) {
-    throw new Error(`Address search failed (${response.status})`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    response = await fetchFn(buildSearchUrl(query), {
+      headers: { "User-Agent": NOMINATIM_USER_AGENT, Accept: "application/json" },
+      signal: controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    if (controller.signal.aborted || (e as Error)?.name === "AbortError") {
+      throw new AddressSearchError("timeout", "Address search timed out");
+    }
+    const detail = e instanceof Error ? e.message : String(e);
+    console.warn("Address search: network error", detail);
+    throw new AddressSearchError("network", `Address search failed: ${detail}`, undefined, detail);
   }
-  return parseResults(await response.json());
+  clearTimeout(timer);
+
+  if (!response.ok) {
+    let body = "";
+    try {
+      body = typeof response.text === "function" ? (await response.text()).slice(0, 200) : "";
+    } catch {
+      body = "";
+    }
+    console.warn("Address search: HTTP", response.status, body);
+    const kind = response.status === 403 ? "blocked" : response.status === 429 ? "rate_limited" : "http";
+    throw new AddressSearchError(kind, `Address search failed (${response.status})`, response.status, body);
+  }
+  try {
+    return parseResults(await response.json());
+  } catch (e) {
+    console.warn("Address search: bad response", e);
+    throw new AddressSearchError("bad_response", "Address search failed: unexpected response", response.status);
+  }
 }
