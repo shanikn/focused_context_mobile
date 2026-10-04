@@ -55,7 +55,7 @@ export async function applyReminderSchedule(plan: PlannedReminder[]): Promise<vo
     await Notifications.scheduleNotificationAsync({
       identifier: reminder.identifier,
       content: {
-        title: "FocusedContext reminder",
+        title: "Smart Mind reminder",
         body: reminder.body,
         sound: "default",
         data: { noteId: reminder.noteId },

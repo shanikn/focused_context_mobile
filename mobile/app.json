@@ -16,7 +16,7 @@
       "bundleIdentifier": "com.shanini.mobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSUserNotificationUsageDescription": "FocusedContext uses notifications to remind you about notes at the right moment."
+        "NSUserNotificationUsageDescription": "Smart Mind uses notifications to remind you about notes at the right moment."
       }
     },
     "android": {
@@ -47,7 +47,7 @@
         "expo-location",
         {
           "isAndroidBackgroundLocationEnabled": true,
-          "locationAlwaysAndWhenInUsePermission": "FocusedContext uses your location to show the right notes when you arrive at your saved places."
+          "locationAlwaysAndWhenInUsePermission": "Smart Mind uses your location to show the right notes when you arrive at your saved places."
         }
       ],
       "expo-font",

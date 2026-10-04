@@ -59,7 +59,7 @@ export function locationStatus(p: GrantedPermissions): LocationStatus {
   if (p.foreground && p.background) {
     return {
       mode: "automatic",
-      message: "Automatic: FocusedContext notices when you arrive at a saved place.",
+      message: "Automatic: Smart Mind notices when you arrive at a saved place.",
     };
   }
   if (p.foreground) {

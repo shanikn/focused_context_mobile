@@ -142,7 +142,7 @@ export async function checkAndNotifyReminders(
 
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: "FocusedContext reminder",
+        title: "Smart Mind reminder",
         body: note.content,
         sound: "default",
         data: {

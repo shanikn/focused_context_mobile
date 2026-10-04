@@ -14,14 +14,14 @@ const SCREENS: Record<Screen, { title: string; body: string; continueText: strin
   explain: {
     title: "Use your location?",
     body:
-      "FocusedContext can save your places (home, uni, the gym...) and show the " +
+      "Smart Mind can save your places (home, uni, the gym...) and show the " +
       "right notes when you're there. Next, Android will ask for location access.",
     continueText: "Continue",
   },
   disclosure: {
     title: "Background location",
     body:
-      "FocusedContext checks in the background whether you arrived at a saved place; " +
+      "Smart Mind checks in the background whether you arrived at a saved place; " +
       'only the place name is sent to the server. On the next screen, choose "Allow all the time".',
     continueText: "Continue",
   },

@@ -1,6 +1,6 @@
-# FocusedContext — Android
+# Smart Mind — Android
 
-Most note-taking apps are graveyards for ideas. FocusedContext brings your notes back to life —
+Most note-taking apps are graveyards for ideas. Smart Mind brings your notes back to life —
 resurfacing them exactly when and where you need them, as a native Android app.
 
 The app is built with React Native and Expo (SDK 54) in `mobile/`, backed by a FastAPI server
@@ -8,7 +8,7 @@ in `api/`.
 
 ## Overview
 
-FocusedContext is a context-aware reminder system that uses semantic search and environmental
+Smart Mind is a context-aware reminder system that uses semantic search and environmental
 context to bridge the gap between "noting" and "doing." Write "buy milk" and it appears when
 you're near a store. Write "study for exam" and it surfaces when you're at university.
 
