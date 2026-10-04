@@ -155,3 +155,12 @@ def test_note_with_a_date_is_scheduled():
     note = "get 20 minutes early to the exam on the 9th of October"
     assert categorize(note) == "scheduled"
     assert _place_id(note) == "p-uni"
+
+
+def test_get_something_is_an_errand():
+    assert categorize("get carrots") == "errand"
+    assert categorize("grab bread from the supermarket") == "errand"
+
+
+def test_get_with_a_day_is_scheduled_not_errand():
+    assert categorize("get to the exam on the 9th of October") == "scheduled"
