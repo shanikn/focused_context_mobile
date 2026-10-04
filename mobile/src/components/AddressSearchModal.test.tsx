@@ -1,37 +1,60 @@
 import React from "react";
-import { Keyboard, ScrollView, TextInput, TouchableOpacity } from "react-native";
-import TestRenderer, { act, ReactTestRenderer } from "react-test-renderer";
+import { Keyboard, ScrollView, Text, TextInput, TouchableOpacity } from "react-native";
+import TestRenderer, { act, ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
 import AddressSearchModal from "./AddressSearchModal";
 import { findAddress } from "../services/addressSearch";
 
 jest.mock("../services/addressSearch", () => ({ findAddress: jest.fn() }));
 
-const REICHMAN = { label: "Reichman University, Herzliya", latitude: 32.176, longitude: 34.837 };
+const REICHMAN = { label: "Reichman University, Herzliya, Israel", latitude: 32.176, longitude: 34.837 };
+const OTHER = { label: "Reichman Street, Tel Aviv, Israel", latitude: 32.08, longitude: 34.78 };
 
-async function renderAndSearch(onPick: jest.Mock) {
-  (findAddress as jest.Mock).mockResolvedValue([REICHMAN]);
+function textOf(node: ReactTestInstance): string {
+  return node
+    .findAllByType(Text)
+    .map((t) => [t.props.children].flat().join(""))
+    .join(" ");
+}
+
+function buttonWithText(tree: ReactTestRenderer, label: string): ReactTestInstance {
+  const button = tree.root
+    .findAllByType(TouchableOpacity)
+    .find((t) => t.findAllByType(Text).some((x) => [x.props.children].flat().join("") === label));
+  if (!button) {
+    throw new Error(`no button "${label}"`);
+  }
+  return button;
+}
+
+function resultRows(tree: ReactTestRenderer): ReactTestInstance[] {
+  return tree.root.findByType(ScrollView).findAllByType(TouchableOpacity);
+}
+
+async function renderAndSearch(onSave: jest.Mock, results = [REICHMAN, OTHER]) {
+  (findAddress as jest.Mock).mockResolvedValue(results);
   let tree!: ReactTestRenderer;
   await act(async () => {
     tree = TestRenderer.create(
-      <AddressSearchModal visible placeName="Uni" onPick={onPick} onCancel={jest.fn()} />
+      <AddressSearchModal visible placeName="Uni" onSave={onSave} onCancel={jest.fn()} />
     );
   });
   await act(async () => {
     tree.root.findByType(TextInput).props.onChangeText("Reichman University");
   });
-  const searchButton = tree.root
-    .findAllByType(TouchableOpacity)
-    .find((t) => t.findAll((n) => n.props.children === "Search").length > 0)!;
   await act(async () => {
-    await searchButton.props.onPress();
+    await buttonWithText(tree, "Search").props.onPress();
   });
   return tree;
 }
 
-test("results stay tappable while the keyboard is open (first tap picks, not just closes the keyboard)", async () => {
+test("after a search the results are shown as a list of tappable rows", async () => {
   const tree = await renderAndSearch(jest.fn());
-  const list = tree.root.findByType(ScrollView);
-  expect(list.props.keyboardShouldPersistTaps).toBe("handled");
+  const rows = resultRows(tree);
+  expect(rows).toHaveLength(2);
+  expect(textOf(rows[0])).toContain(REICHMAN.label);
+  expect(textOf(rows[1])).toContain(OTHER.label);
+  // with the keyboard still open, the first tap must select, not just close the keyboard
+  expect(tree.root.findByType(ScrollView).props.keyboardShouldPersistTaps).toBe("handled");
 });
 
 test("searching closes the keyboard so the results aren't hidden behind it", async () => {
@@ -41,14 +64,60 @@ test("searching closes the keyboard so the results aren't hidden behind it", asy
   dismiss.mockRestore();
 });
 
-test("tapping a result hands it to onPick", async () => {
-  const onPick = jest.fn();
-  const tree = await renderAndSearch(onPick);
-  const result = tree.root
-    .findByType(ScrollView)
-    .findAllByType(TouchableOpacity)[0];
+test("Save is disabled until a result is selected", async () => {
+  const tree = await renderAndSearch(jest.fn());
+  expect(buttonWithText(tree, "Save as Uni").props.disabled).toBe(true);
+});
+
+test("tapping a result selects it: highlighted, and its address is shown", async () => {
+  const tree = await renderAndSearch(jest.fn());
   await act(async () => {
-    result.props.onPress();
+    resultRows(tree)[0].props.onPress();
   });
-  expect(onPick).toHaveBeenCalledWith(REICHMAN);
+  const rows = resultRows(tree);
+  expect(rows[0].props.accessibilityState).toEqual({ selected: true });
+  expect(rows[1].props.accessibilityState).toEqual({ selected: false });
+  const selected = tree.root.findByProps({ testID: "selected-address" });
+  expect(textOf(selected)).toContain(REICHMAN.label);
+  expect(buttonWithText(tree, "Save as Uni").props.disabled).toBe(false);
+});
+
+test("tapping a different result moves the selection", async () => {
+  const tree = await renderAndSearch(jest.fn());
+  await act(async () => resultRows(tree)[0].props.onPress());
+  await act(async () => resultRows(tree)[1].props.onPress());
+  expect(resultRows(tree)[1].props.accessibilityState).toEqual({ selected: true });
+  expect(textOf(tree.root.findByProps({ testID: "selected-address" }))).toContain(OTHER.label);
+});
+
+test("Save as <place> saves the selected result", async () => {
+  const onSave = jest.fn().mockResolvedValue(undefined);
+  const tree = await renderAndSearch(onSave);
+  await act(async () => resultRows(tree)[1].props.onPress());
+  await act(async () => {
+    await buttonWithText(tree, "Save as Uni").props.onPress();
+  });
+  expect(onSave).toHaveBeenCalledWith(OTHER);
+});
+
+test("if saving fails, the dialog stays open and says so", async () => {
+  const onSave = jest.fn().mockRejectedValue(new Error("disk full"));
+  const tree = await renderAndSearch(onSave);
+  await act(async () => resultRows(tree)[0].props.onPress());
+  await act(async () => {
+    await buttonWithText(tree, "Save as Uni").props.onPress();
+  });
+  expect(textOf(tree.root)).toMatch(/couldn't save/i);
+  expect(resultRows(tree)[0].props.accessibilityState).toEqual({ selected: true });
+});
+
+test("a new search clears the previous selection", async () => {
+  const tree = await renderAndSearch(jest.fn());
+  await act(async () => resultRows(tree)[0].props.onPress());
+  (findAddress as jest.Mock).mockResolvedValue([OTHER]);
+  await act(async () => {
+    await buttonWithText(tree, "Search").props.onPress();
+  });
+  expect(tree.root.findAllByProps({ testID: "selected-address" })).toHaveLength(0);
+  expect(buttonWithText(tree, "Save as Uni").props.disabled).toBe(true);
 });
