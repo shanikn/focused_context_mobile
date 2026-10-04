@@ -68,3 +68,36 @@ export function shouldGeofence(c: GeofenceConditions): boolean {
     c.placeCount > 0
   );
 }
+
+// Android reports ENTER right away for every region you're already inside when
+// geofences are (re-)registered (expo-location sets INITIAL_TRIGGER_ENTER).
+// Those aren't arrivals: within this window after registering, ENTER only
+// updates the current place and doesn't notify.
+export const INITIAL_ENTER_GRACE_MS = 60_000;
+
+export function shouldNotifyArrival(
+  event: GeofenceEvent,
+  now: number,
+  registeredAt: number | null,
+  graceMs: number = INITIAL_ENTER_GRACE_MS
+): boolean {
+  if (event !== "enter") {
+    return false;
+  }
+  return registeredAt === null || now - registeredAt >= graceMs;
+}
+
+function regionKey(r: GeofenceRegion): string {
+  return [r.identifier, r.latitude, r.longitude, r.radius, r.notifyOnEnter, r.notifyOnExit].join("|");
+}
+
+// Re-registering resets Android's geofences (and fires initial ENTERs), so
+// only do it when the regions actually changed.
+export function regionsChanged(previous: GeofenceRegion[] | null, next: GeofenceRegion[]): boolean {
+  if (!previous || previous.length !== next.length) {
+    return true;
+  }
+  const a = previous.map(regionKey).sort();
+  const b = next.map(regionKey).sort();
+  return a.some((key, i) => key !== b[i]);
+}
