@@ -92,10 +92,10 @@ describe("right side", () => {
     });
   });
 
-  test("as written in the plan, a time wins even when alerts are off", () => {
+  test("alerts off wins over a time: bell-off, not a time that won't ring", () => {
     expect(
       noteCardInfo(note({ reminders_enabled: false, contexts: ["17:54"] }), PLACES, DEFAULT_CATEGORY_COLORS).trailing
-    ).toEqual({ kind: "time", time: "17:54" });
+    ).toEqual({ kind: "off" });
   });
 });
 

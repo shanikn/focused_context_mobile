@@ -38,10 +38,11 @@ export function noteCardInfo(note: Note, places: ServerPlace[], categoryColors: 
   const category = note.category || "uncategorized";
   const time = noteTime(note);
   let trailing: Trailing;
-  if (time) {
-    trailing = { kind: "time", time };
-  } else if (note.reminders_enabled === false) {
+  // alerts off wins: a time would look like an alarm that won't ring
+  if (note.reminders_enabled === false) {
     trailing = { kind: "off" };
+  } else if (time) {
+    trailing = { kind: "time", time };
   } else {
     trailing = { kind: "smart" };
   }
