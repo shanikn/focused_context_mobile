@@ -24,7 +24,7 @@ test("strips RTL marks and skips empty queries", async () => {
   expect(backend).toHaveBeenCalledTimes(1);
 });
 
-test("older backend without /geocode/ (404): falls back to Nominatim directly", async () => {
+test("older backend without /places/search (404): falls back to Nominatim directly", async () => {
   const backend = jest.fn().mockRejectedValue(new ApiError(404, '{"detail":"Not Found"}'));
   const direct = jest.fn().mockResolvedValue(RESULTS);
   expect(await findAddress("Reichman University", deps(backend, direct))).toEqual(RESULTS);
