@@ -23,6 +23,7 @@ from places import (  # noqa: E402
     update_place,
 )
 from auth import get_user_id  # noqa: E402
+import geocode  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -227,6 +228,26 @@ def get_reminders_endpoint(
     query = f"{label} {hour}" if hour is not None else label
     notes = get_reminders(query, location, hour, minute, user_id)
     return [note_to_dict(n) for n in notes]
+
+
+# ---- address search: the phone asks us, we ask OpenStreetMap Nominatim ----
+
+# upstream problem -> our status: 429 passes through, an unreachable or
+# slow Nominatim is a gateway timeout, anything else a bad gateway
+_GEOCODE_STATUS = {"rate_limited": 429, "network": 504}
+
+
+@app.get("/geocode/")
+def geocode_search(q: str, authorization: Optional[str] = Header(None)):
+    require_user_id(authorization)
+    try:
+        return geocode.search(q)
+    except geocode.GeocodeError as e:
+        logging.warning("Geocode failed: %s", e)
+        raise HTTPException(
+            status_code=_GEOCODE_STATUS.get(e.kind, 502),
+            detail={"kind": e.kind, "upstream_status": e.status},
+        )
 
 
 # ---- places: names (and optional keywords) only; coordinates stay on the phone ----

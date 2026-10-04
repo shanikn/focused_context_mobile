@@ -11,6 +11,19 @@ const BASE_URL = normalizeBaseUrl(
 
 let authToken: string | null = null;
 
+// thrown for non-2xx responses; keeps the status so callers can react to it
+export class ApiError extends Error {
+  status: number;
+  body: string;
+
+  constructor(status: number, body: string) {
+    super(`API error ${status}: ${body}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export function setAuthToken(token: string | null) {
   authToken = token;
 }
@@ -36,7 +49,7 @@ export async function apiRequest(
   if (!response.ok) {
     const body = await response.text();
     console.error(`API error ${response.status}: ${body}`);
-    throw new Error(`API error ${response.status}: ${body}`);
+    throw new ApiError(response.status, body);
   }
 
   return response.json();

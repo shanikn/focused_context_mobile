@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   ScrollView,
 } from "react-native";
-import { AddressResult, searchAddress, searchErrorMessage } from "../lib/nominatim";
+import { AddressResult, searchErrorMessage } from "../lib/nominatim";
+import { findAddress } from "../services/addressSearch";
 
 // Find a place's coordinates by address. Searches only when the user taps
 // Search (Nominatim policy: no search-as-you-type).
@@ -44,7 +45,7 @@ export default function AddressSearchModal({
     setSearching(true);
     setError(null);
     try {
-      setResults(await searchAddress(query));
+      setResults(await findAddress(query));
     } catch (e) {
       setError(searchErrorMessage(e));
     } finally {
@@ -95,7 +96,7 @@ export default function AddressSearchModal({
             </ScrollView>
           )}
           <Text style={styles.attribution}>
-            Address search: © OpenStreetMap contributors, via Nominatim. Your search text is sent there.
+            Address search: © OpenStreetMap contributors, via Nominatim. Your search text goes through our server to OpenStreetMap.
           </Text>
           <TouchableOpacity style={styles.secondary} onPress={onCancel}>
             <Text style={styles.secondaryText}>Cancel</Text>
