@@ -1,6 +1,6 @@
 import { currentPlaceLabel, noteCardInfo } from "./noteCardInfo";
 import { DEFAULT_CATEGORY_COLORS } from "./categoryColors";
-import { colors } from "../theme";
+import { darkColors, lightColors as colors } from "../theme";
 import { Note } from "../types/notes";
 
 const PLACES = [
@@ -60,6 +60,18 @@ describe("meta line", () => {
   test("…and textMuted when it isn't (e.g. a light yellow)", () => {
     const custom = { ...DEFAULT_CATEGORY_COLORS, idea: "#FFEB3B" };
     expect(noteCardInfo(note({ category: "idea" }), PLACES, custom).categoryTextColor).toBe(colors.textMuted);
+  });
+
+  test("dark mode: category text must be readable on the dark card", () => {
+    // the default task blue is too dark on a dark card -> textMuted
+    expect(
+      noteCardInfo(note({ category: "task" }), PLACES, DEFAULT_CATEGORY_COLORS, darkColors).categoryTextColor
+    ).toBe(darkColors.textMuted);
+    // a light yellow reads fine on a dark card
+    const custom = { ...DEFAULT_CATEGORY_COLORS, idea: "#FFEB3B" };
+    expect(noteCardInfo(note({ category: "idea" }), PLACES, custom, darkColors).categoryTextColor).toBe("#FFEB3B");
+    // the icon tile keeps black/white by contrast with the category color itself
+    expect(noteCardInfo(note({ category: "idea" }), PLACES, custom, darkColors).tileIconColor).toBe("#000000");
   });
 
   test("place name when the note has a place, otherwise none", () => {

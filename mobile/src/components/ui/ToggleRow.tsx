@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, Switch, Text, View } from "react-native";
-import { colors, type } from "../../theme";
+import { Theme } from "../../theme";
+import { useTheme, useThemedStyles } from "../../ThemeContext";
 
 // Title + caption on the left, a switch on the right.
 export default function ToggleRow({
@@ -16,6 +17,8 @@ export default function ToggleRow({
   onValueChange: (value: boolean) => void;
   disabled?: boolean;
 }) {
+  const { colors, type } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.row}>
       <View style={styles.text}>
@@ -34,7 +37,8 @@ export default function ToggleRow({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, type }: Theme) =>
+  StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44 },
   text: { flex: 1 },
 });

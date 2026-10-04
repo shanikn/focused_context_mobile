@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Note } from "../types/notes";
-import { colors } from "../theme";
+import { lightColors, Palette } from "../theme";
 import { CategoryColors, colorFor, contrastRatio, textColorFor } from "./categoryColors";
 import { GENERAL } from "./folderOrder";
 import { locationLabel, noteTime } from "./noteLabels";
@@ -27,13 +27,18 @@ export interface NoteCardInfo {
   tileColor: string; // the user's category color
   tileIconColor: string; // black or white, whichever reads better on it
   categoryLabel: string;
-  categoryTextColor: string; // the category color if readable on white, else textMuted
+  categoryTextColor: string; // the category color if readable on the card, else textMuted
   placeName: string | null;
   folderName: string | null; // only when not General
   trailing: Trailing;
 }
 
-export function noteCardInfo(note: Note, places: ServerPlace[], categoryColors: CategoryColors): NoteCardInfo {
+export function noteCardInfo(
+  note: Note,
+  places: ServerPlace[],
+  categoryColors: CategoryColors,
+  palette: Palette = lightColors
+): NoteCardInfo {
   const color = colorFor(note.category, categoryColors);
   const category = note.category || "uncategorized";
   const time = noteTime(note);
@@ -51,7 +56,8 @@ export function noteCardInfo(note: Note, places: ServerPlace[], categoryColors: 
     tileColor: color,
     tileIconColor: textColorFor(color),
     categoryLabel: category.charAt(0).toUpperCase() + category.slice(1),
-    categoryTextColor: contrastRatio(color, "#FFFFFF") >= 4.5 ? color : colors.textMuted,
+    // readable on this theme's card (white in light mode, dark green-grey in dark mode)
+    categoryTextColor: contrastRatio(color, palette.surface) >= 4.5 ? color : palette.textMuted,
     placeName: locationLabel(note, places),
     folderName: note.list_name && note.list_name !== GENERAL ? note.list_name : null,
     trailing,

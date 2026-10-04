@@ -28,7 +28,8 @@ import {
 import { authErrorMessage } from "../lib/authErrors";
 import { colorFor, DEFAULT_CATEGORY_COLORS, textColorFor } from "../lib/categoryColors";
 import { Card, IconTile, PrimaryButton, TextButton } from "../components/ui";
-import { colors, fonts, MIN_TOUCH_TARGET, radius, spacing, type } from "../theme";
+import { MIN_TOUCH_TARGET, Theme, fonts, radius, spacing } from "../theme";
+import { useTheme, useThemedStyles } from "../ThemeContext";
 
 GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID });
 
@@ -37,6 +38,8 @@ const TASK_COLOR = colorFor("task", DEFAULT_CATEGORY_COLORS);
 // A note drawn like a card in the real list, to show what the app does
 // before signing in. Not a real note, so screen readers skip it.
 function SampleNote() {
+  const { colors, type } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View
       testID="sample-note"
@@ -62,6 +65,8 @@ function SampleNote() {
 }
 
 export default function LoginScreen() {
+  const { colors, type } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
@@ -211,7 +216,8 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, type }: Theme) =>
+  StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   content: { padding: spacing.screen, paddingTop: 32, gap: spacing.cardGap },

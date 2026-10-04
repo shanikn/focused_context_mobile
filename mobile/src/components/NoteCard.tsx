@@ -7,7 +7,8 @@ import { ServerPlace } from "../lib/userPlaces";
 import { CategoryColors } from "../lib/categoryColors";
 import { noteCardInfo } from "../lib/noteCardInfo";
 import { IconTile } from "./ui";
-import { colors, fonts, radius, type } from "../theme";
+import { Theme, fonts, radius } from "../theme";
+import { useTheme, useThemedStyles } from "../ThemeContext";
 
 interface NoteCardProps {
   note: Note;
@@ -18,7 +19,10 @@ interface NoteCardProps {
 }
 
 export default function NoteCard({ note, onPress, onDelete, places, categoryColors }: NoteCardProps) {
-  const info = noteCardInfo(note, places, categoryColors);
+  const { colors, type } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  // the palette decides whether the category name is readable on the card
+  const info = noteCardInfo(note, places, categoryColors, colors);
 
   const confirmDelete = () => {
     Alert.alert("Delete Note", "Are you sure you want to delete this note?", [
@@ -91,7 +95,8 @@ export default function NoteCard({ note, onPress, onDelete, places, categoryColo
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, type }: Theme) =>
+  StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",

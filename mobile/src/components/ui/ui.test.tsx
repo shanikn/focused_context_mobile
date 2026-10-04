@@ -2,7 +2,7 @@ import React from "react";
 import { ScrollView, Switch, Text, TouchableOpacity } from "react-native";
 import TestRenderer, { act, ReactTestRenderer } from "react-test-renderer";
 import { Chip, ChipRow, PrimaryButton, ToggleRow } from "./index";
-import { colors } from "../../theme";
+import { lightColors as colors } from "../../theme";
 
 function render(element: React.ReactElement): ReactTestRenderer {
   let tree!: ReactTestRenderer;

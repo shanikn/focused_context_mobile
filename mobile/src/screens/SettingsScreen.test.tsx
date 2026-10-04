@@ -176,3 +176,21 @@ test("Sign out asks to confirm", async () => {
   await act(async () => byLabel(tree, "Sign out").props.onPress());
   expect(lastAlertButtons()).toEqual(["Cancel", "Sign Out"]);
 });
+
+test("Appearance: System / Light / Dark, default System, saved on the phone", async () => {
+  const { ThemeProvider } = require("../ThemeContext");
+  const AsyncStorage = require("@react-native-async-storage/async-storage");
+  let tree!: ReactTestRenderer;
+  await act(async () => {
+    tree = TestRenderer.create(
+      <ThemeProvider>
+        <SettingsScreen />
+      </ThemeProvider>
+    );
+  });
+  expect(allText(tree.root)).toContain("Appearance");
+  expect(byLabel(tree, "Appearance: System").props.accessibilityState.selected).toBe(true);
+  await act(async () => byLabel(tree, "Appearance: Dark").props.onPress());
+  expect(byLabel(tree, "Appearance: Dark").props.accessibilityState.selected).toBe(true);
+  expect(await AsyncStorage.getItem("focusedcontext.appearance")).toBe("dark");
+});

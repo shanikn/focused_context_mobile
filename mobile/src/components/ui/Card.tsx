@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
-import { colors, radius, type } from "../../theme";
+import { Theme, radius } from "../../theme";
+import { useTheme, useThemedStyles } from "../../ThemeContext";
 
 // White rounded card with an optional title and helper text.
 export default function Card({
@@ -14,6 +15,8 @@ export default function Card({
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
+  const { colors, type } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.card, style]}>
       {title ? <Text style={type.cardTitle}>{title}</Text> : null}
@@ -23,7 +26,8 @@ export default function Card({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, type }: Theme) =>
+  StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.card,

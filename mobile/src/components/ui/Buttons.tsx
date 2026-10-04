@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   ViewStyle,
 } from "react-native";
-import { colors, fonts, MIN_TOUCH_TARGET, radius } from "../../theme";
+import { MIN_TOUCH_TARGET, Theme, fonts, radius } from "../../theme";
+import { useTheme, useThemedStyles } from "../../ThemeContext";
 
 // Filled green pill, e.g. "Save" or "Save as Uni" (disabled until an
 // address is selected; `loading` while saving).
@@ -26,6 +27,8 @@ export function PrimaryButton({
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }) {
+  const { colors, type } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const off = disabled || loading;
   return (
     <TouchableOpacity
@@ -60,6 +63,8 @@ export function TextButton({
   destructive?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  const { colors, type } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <TouchableOpacity
       style={[styles.text, disabled && styles.disabled, style]}
@@ -74,7 +79,8 @@ export function TextButton({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, type }: Theme) =>
+  StyleSheet.create({
   primary: {
     height: MIN_TOUCH_TARGET,
     borderRadius: radius.chip,

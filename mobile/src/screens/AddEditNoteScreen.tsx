@@ -21,7 +21,8 @@ import { syncScheduledReminders } from "../services/scheduledReminders";
 import { loadPlaces } from "../services/placesStore";
 import { ServerPlace } from "../lib/userPlaces";
 import { Card, Chip, ChipRow, PrimaryButton, TextButton, ToggleRow } from "../components/ui";
-import { colors, fonts, MIN_TOUCH_TARGET, spacing, type } from "../theme";
+import { MIN_TOUCH_TARGET, Theme, fonts, spacing } from "../theme";
+import { useTheme, useThemedStyles } from "../ThemeContext";
 
 type RouteParams = RouteProp<NotesStackParamList, "AddEditNote">;
 
@@ -78,6 +79,8 @@ function AlertTile({
   onPress: () => void;
   disabled: boolean;
 }) {
+  const { colors, type } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <TouchableOpacity
       style={styles.tile}
@@ -101,6 +104,8 @@ function AlertTile({
 }
 
 export default function AddEditNoteScreen() {
+  const { colors, type, dark } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation();
   const route = useRoute<RouteParams>();
   const existingNote = route.params?.note;
@@ -296,6 +301,7 @@ export default function AddEditNoteScreen() {
               value={selectedDate ?? new Date()}
               mode="date"
               display={Platform.OS === "ios" ? "inline" : "default"}
+              themeVariant={dark ? "dark" : "light"}
               onChange={handleDateChange}
             />
           )}
@@ -304,6 +310,7 @@ export default function AddEditNoteScreen() {
               value={selectedTime ?? new Date()}
               mode="time"
               display={Platform.OS === "ios" ? "spinner" : "default"}
+              themeVariant={dark ? "dark" : "light"}
               onChange={handleTimeChange}
             />
           )}
@@ -371,7 +378,8 @@ export default function AddEditNoteScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, type }: Theme) =>
+  StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: "row",

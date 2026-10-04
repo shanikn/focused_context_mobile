@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, AppState, View } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
+import { StatusBar } from "expo-status-bar";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,7 +23,8 @@ import { checkAndNotifyReminders } from "./src/services/reminderNotifier";
 import { syncGeofencing } from "./src/services/geofence";
 import { syncScheduledReminders } from "./src/services/scheduledReminders";
 import { Note } from "./src/types/notes";
-import { colors, fonts } from "./src/theme";
+import { fonts } from "./src/theme";
+import { ThemeProvider, useTheme } from "./src/ThemeContext";
 
 export type NotesStackParamList = {
   NotesList: undefined;
@@ -61,6 +63,7 @@ const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 
 function MainTabs() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -157,16 +160,35 @@ function RootNavigator() {
     };
   }, [user]);
 
+  const { colors, dark } = useTheme();
+  // screen backgrounds behind transitions, so nothing flashes white in dark mode
+  const navigationTheme = useMemo(() => {
+    const base = dark ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: colors.primary,
+        background: colors.background,
+        card: colors.surface,
+        text: colors.text,
+        border: colors.border,
+      },
+    };
+  }, [dark, colors]);
+
   if (loading || !fontsLoaded) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color="#2E7D32" />
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.background }}>
+        <StatusBar style={dark ? "light" : "dark"} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={navigationTheme}>
+      <StatusBar style={dark ? "light" : "dark"} />
       {user ? <MainTabs /> : <LoginScreen />}
     </NavigationContainer>
   );
@@ -176,9 +198,11 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <AuthProvider>
-          <RootNavigator />
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <RootNavigator />
+          </AuthProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

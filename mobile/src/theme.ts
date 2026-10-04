@@ -1,8 +1,12 @@
 import { TextStyle } from "react-native";
 
-// Design tokens for the redesign (see redesign.md). Screens adopt these step by step.
+// Design tokens (see redesign.md). Colors come in a light and a dark palette
+// with the same names; components read the active one with useTheme()
+// (src/ThemeContext.tsx) instead of importing a palette directly.
 
-export const colors = {
+export type ColorScheme = "light" | "dark";
+
+export const lightColors = {
   background: "#F3F5F0",
   surface: "#FFFFFF",
   border: "#E1E6DE",
@@ -14,7 +18,23 @@ export const colors = {
   primarySoft: "#DCEEDD", // light green fills
   chip: "#E6EAE2", // unselected chip fill
   danger: "#B3261E",
-} as const;
+};
+
+export type Palette = typeof lightColors;
+
+export const darkColors: Palette = {
+  background: "#0F1411",
+  surface: "#182019",
+  border: "#2C372F",
+  text: "#E6ECE7",
+  textMuted: "#A3B0A7",
+  primary: "#6CC48A", // lighter green that reads on dark backgrounds
+  onPrimary: "#0B2414", // dark text on the light green
+  primaryDark: "#A9E2B9", // "dark green" role = green text, light on dark
+  primarySoft: "#1F3A28", // dark green fills
+  chip: "#26312A",
+  danger: "#F2B8B5",
+};
 
 export const radius = {
   card: 20,
@@ -40,18 +60,36 @@ export const fonts = {
 
 export const MIN_TOUCH_TARGET = 44;
 
-export const type = {
-  screenTitle: { fontFamily: fonts.display, fontSize: 28, lineHeight: 44, color: colors.text },
-  sectionLabel: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 13,
-    lineHeight: 18,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    color: colors.textMuted,
-  },
-  cardTitle: { fontFamily: fonts.bodyBold, fontSize: 16, lineHeight: 22, color: colors.text },
-  body: { fontFamily: fonts.bodySemi, fontSize: 16, lineHeight: 22, color: colors.text },
-  caption: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: colors.textMuted },
-  chip: { fontFamily: fonts.bodySemi, fontSize: 14 },
-} satisfies Record<string, TextStyle>;
+function makeType(colors: Palette) {
+  return {
+    screenTitle: { fontFamily: fonts.display, fontSize: 28, lineHeight: 44, color: colors.text },
+    sectionLabel: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 13,
+      lineHeight: 18,
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+      color: colors.textMuted,
+    },
+    cardTitle: { fontFamily: fonts.bodyBold, fontSize: 16, lineHeight: 22, color: colors.text },
+    body: { fontFamily: fonts.bodySemi, fontSize: 16, lineHeight: 22, color: colors.text },
+    caption: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: colors.textMuted },
+    chip: { fontFamily: fonts.bodySemi, fontSize: 14 },
+  } satisfies Record<string, TextStyle>;
+}
+
+export interface Theme {
+  scheme: ColorScheme;
+  dark: boolean;
+  colors: Palette;
+  type: ReturnType<typeof makeType>;
+}
+
+const THEMES: Record<ColorScheme, Theme> = {
+  light: { scheme: "light", dark: false, colors: lightColors, type: makeType(lightColors) },
+  dark: { scheme: "dark", dark: true, colors: darkColors, type: makeType(darkColors) },
+};
+
+export function makeTheme(scheme: ColorScheme): Theme {
+  return THEMES[scheme];
+}

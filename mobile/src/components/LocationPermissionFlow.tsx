@@ -1,5 +1,7 @@
 import React, { useCallback, useRef, useState } from "react";
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { Theme } from "../theme";
+import { useTheme, useThemedStyles } from "../ThemeContext";
 import {
   GrantedPermissions,
   nextStep,
@@ -87,6 +89,8 @@ export function LocationPermissionModal({
   onContinue: () => void;
   onSkip: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const content = screen ? SCREENS[screen] : null;
   return (
     <Modal visible={content !== null} transparent animationType="fade" onRequestClose={onSkip}>
@@ -108,7 +112,8 @@ export function LocationPermissionModal({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors }: Theme) =>
+  StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
@@ -116,30 +121,30 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   card: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 20,
   },
   title: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#333",
+    color: colors.text,
     marginBottom: 8,
   },
   body: {
     fontSize: 14,
-    color: "#555",
+    color: colors.textMuted,
     lineHeight: 20,
     marginBottom: 20,
   },
   primary: {
-    backgroundColor: "#2E7D32",
+    backgroundColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: "center",
   },
   primaryText: {
-    color: "#fff",
+    color: colors.onPrimary,
     fontSize: 15,
     fontWeight: "600",
   },
@@ -148,7 +153,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   secondaryText: {
-    color: "#666",
+    color: colors.textMuted,
     fontSize: 14,
   },
 });

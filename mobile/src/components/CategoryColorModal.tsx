@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { Theme } from "../theme";
+import { useTheme, useThemedStyles } from "../ThemeContext";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import ColorPicker, { BrightnessSlider, Panel3 } from "reanimated-color-picker";
 import { BASIC_SWATCHES, normalizeHex, textColorFor } from "../lib/categoryColors";
@@ -22,6 +24,8 @@ export default function CategoryColorModal({
   onReset: () => void;
   onCancel: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [draft, setDraft] = useState(color);
 
   useEffect(() => {
@@ -92,7 +96,8 @@ export default function CategoryColorModal({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors }: Theme) =>
+  StyleSheet.create({
   root: { flex: 1 },
   backdrop: {
     flex: 1,
@@ -100,8 +105,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 20,
   },
-  card: { backgroundColor: "#fff", borderRadius: 12, padding: 18 },
-  title: { fontSize: 18, fontWeight: "600", color: "#333", marginBottom: 12, textTransform: "capitalize" },
+  card: { backgroundColor: colors.surface, borderRadius: 12, padding: 18 },
+  title: { fontSize: 18, fontWeight: "600", color: colors.text, marginBottom: 12, textTransform: "capitalize" },
   preview: {
     alignSelf: "flex-start",
     borderRadius: 12,
@@ -110,22 +115,22 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   previewText: { fontSize: 14, fontWeight: "600", textTransform: "capitalize" },
-  label: { fontSize: 13, color: "#777", marginBottom: 8 },
+  label: { fontSize: 13, color: colors.textMuted, marginBottom: 8 },
   swatches: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 14 },
-  swatch: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: "#ddd" },
-  swatchSelected: { borderWidth: 3, borderColor: "#333" },
+  swatch: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.border },
+  swatchSelected: { borderWidth: 3, borderColor: colors.text },
   picker: { gap: 12, marginBottom: 16 },
   wheel: { width: 190, height: 190, alignSelf: "center" },
   slider: { borderRadius: 10 },
   primary: {
-    backgroundColor: "#2E7D32",
+    backgroundColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: "center",
   },
-  primaryText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  primaryText: { color: colors.onPrimary, fontSize: 15, fontWeight: "600" },
   row: { flexDirection: "row", justifyContent: "space-between" },
   secondary: { paddingVertical: 12, paddingHorizontal: 4 },
-  secondaryText: { color: "#666", fontSize: 14 },
-  disabledText: { color: "#bbb" },
+  secondaryText: { color: colors.textMuted, fontSize: 14 },
+  disabledText: { color: colors.border },
 });

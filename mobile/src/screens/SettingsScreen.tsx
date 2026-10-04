@@ -49,7 +49,15 @@ import {
   setCategoryColor,
 } from "../lib/categoryColors";
 import { Card, Chip, ChipRow, TextButton, ToggleRow } from "../components/ui";
-import { colors, fonts, MIN_TOUCH_TARGET, spacing, type } from "../theme";
+import { MIN_TOUCH_TARGET, Theme, fonts, spacing } from "../theme";
+import { useTheme, useThemedStyles } from "../ThemeContext";
+import { APPEARANCE_OPTIONS, AppearancePref } from "../lib/appearance";
+
+const APPEARANCE_ICONS: Record<AppearancePref, "phone-portrait-outline" | "sunny-outline" | "moon-outline"> = {
+  system: "phone-portrait-outline",
+  light: "sunny-outline",
+  dark: "moon-outline",
+};
 import { GrantedPermissions, locationStatus } from "../lib/locationPermissionFlow";
 import { getGrantedPermissions } from "../services/locationPermissions";
 import { syncGeofencing } from "../services/geofence";
@@ -60,6 +68,8 @@ import {
 } from "../components/LocationPermissionFlow";
 
 export default function SettingsScreen() {
+  const { colors, type, appearance, setAppearancePref } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const { user } = useAuth();
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
   const [location, setLocation] = useState<string>(UNKNOWN);
@@ -463,6 +473,24 @@ export default function SettingsScreen() {
           </View>
         </Card>
 
+        <Card title="Appearance" helper="System follows your phone's light or dark setting.">
+          <ChipRow style={styles.chips}>
+            {APPEARANCE_OPTIONS.map((option) => {
+              const label = option.charAt(0).toUpperCase() + option.slice(1);
+              return (
+                <Chip
+                  key={option}
+                  label={label}
+                  icon={APPEARANCE_ICONS[option]}
+                  selected={appearance === option}
+                  onPress={() => setAppearancePref(option)}
+                  accessibilityLabel={`Appearance: ${label}`}
+                />
+              );
+            })}
+          </ChipRow>
+        </Card>
+
         <Card title="Category colors">
           {CATEGORIES.map((category, i) => {
             const color = categoryColors[category];
@@ -548,7 +576,8 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, type }: Theme) =>
+  StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.screen, gap: spacing.cardGap },
   title: { marginBottom: 4 },

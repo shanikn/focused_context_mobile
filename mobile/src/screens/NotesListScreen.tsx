@@ -34,7 +34,8 @@ import {
 } from "../lib/categoryColors";
 import { ALL_CATEGORIES, filterNotes, hasActiveFilters } from "../lib/noteFilter";
 import { Chip, ChipRow, SectionLabel, TextButton } from "../components/ui";
-import { colors, fonts, MIN_TOUCH_TARGET, radius, spacing, type } from "../theme";
+import { MIN_TOUCH_TARGET, Theme, fonts, radius, spacing } from "../theme";
+import { useTheme, useThemedStyles } from "../ThemeContext";
 
 type Nav = NativeStackNavigationProp<NotesStackParamList, "NotesList">;
 
@@ -42,6 +43,8 @@ const FAB_SIZE = 56;
 const FAB_MARGIN = 16;
 
 export default function NotesListScreen() {
+  const { colors, type } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
   const [notes, setNotes] = useState<Note[]>([]);
   const [places, setPlaces] = useState<ServerPlace[]>([]);
@@ -354,7 +357,8 @@ export default function NotesListScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, type }: Theme) =>
+  StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: "row",

@@ -1,7 +1,8 @@
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, fonts, MIN_TOUCH_TARGET, radius, type } from "../../theme";
+import { MIN_TOUCH_TARGET, Theme, fonts, radius } from "../../theme";
+import { useTheme, useThemedStyles } from "../../ThemeContext";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -28,6 +29,8 @@ export default function Chip({
   accessibilityLabel?: string;
   testID?: string;
 }) {
+  const { colors, type } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const fg = selected ? colors.onPrimary : colors.text;
   return (
     <TouchableOpacity
@@ -49,7 +52,8 @@ export default function Chip({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, type }: Theme) =>
+  StyleSheet.create({
   chip: {
     height: MIN_TOUCH_TARGET,
     borderRadius: radius.chip,

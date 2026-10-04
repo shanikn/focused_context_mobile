@@ -14,7 +14,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { AddressResult, searchErrorMessage } from "../lib/nominatim";
 import { findAddress } from "../services/addressSearch";
 import { PrimaryButton, TextButton } from "./ui";
-import { colors, fonts, MIN_TOUCH_TARGET, radius, type } from "../theme";
+import { MIN_TOUCH_TARGET, Theme, fonts, radius } from "../theme";
+import { useTheme, useThemedStyles } from "../ThemeContext";
 
 // Find a place's coordinates by address: search, tap a result to select it,
 // then "Save as <place>". Searches only when the user taps Search
@@ -31,6 +32,8 @@ export default function AddressSearchModal({
   onSave: (result: AddressResult) => Promise<void>;
   onCancel: () => void;
 }) {
+  const { colors, type } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AddressResult[] | null>(null);
   const [selected, setSelected] = useState<AddressResult | null>(null);
@@ -178,7 +181,8 @@ export default function AddressSearchModal({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, type }: Theme) =>
+  StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
