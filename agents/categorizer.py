@@ -11,7 +11,11 @@ task = ["to do", "task"]
 errand = [
     "go", "pick up", "buy", "errand",
     "shopping", "shopping list", "walk", "take",
+    "grocery", "groceries", "supermarket", "store",
 ]
+# "get carrots" is an errand, but "get to the exam on the 9th" is not:
+# these count only when the note names no day or time
+weak_errand = ["get", "grab"]
 idea = ["idea", "random"]
 reminder = ["remind", "forget", "remember"]
 scheduled = [
@@ -67,8 +71,11 @@ def categorize(content: str):
                             result = "idea"
                             break
     # no keyword, but the note names a day or a time: it is scheduled
-    if result == "uncategorized" and (infer_date(content) or infer_time(content)):
-        result = "scheduled"
+    if result == "uncategorized":
+        if infer_date(content) or infer_time(content):
+            result = "scheduled"
+        elif any(_has_word(lower, x) for x in weak_errand):
+            result = "errand"
     logger.debug("categorize(%s) -> %s", content[:30], result)
     return result
 
