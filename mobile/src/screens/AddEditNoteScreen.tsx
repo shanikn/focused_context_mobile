@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect, useCallback, useRef } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   TextInput,
@@ -7,38 +7,39 @@ import {
   Text,
   StyleSheet,
   Alert,
-  Switch,
   Platform,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from "@react-navigation/native";
 import { createNote, updateNote, getNotes } from "../api/notes";
 import { NotesStackParamList } from "../../App";
 import { getCustomLists } from "../lib/listPrefs";
-import { folderNames } from "../lib/folderOrder";
+import { folderNames, GENERAL } from "../lib/folderOrder";
 import { syncScheduledReminders } from "../services/scheduledReminders";
 import { loadPlaces } from "../services/placesStore";
 import { ServerPlace } from "../lib/userPlaces";
+import { Card, Chip, ChipRow, PrimaryButton, TextButton, ToggleRow } from "../components/ui";
+import { colors, fonts, MIN_TOUCH_TARGET, spacing, type } from "../theme";
 
 type RouteParams = RouteProp<NotesStackParamList, "AddEditNote">;
-const CATEGORY_OPTIONS = ["task", "errand", "idea", "reminder", "scheduled", "uncategorized"] as const;
 
-function formatDateValue(date: Date | null): string {
-  if (!date) {
-    return "Use smart date";
-  }
+// chips shown in the Category card (after "Smart")
+const CATEGORY_OPTIONS = ["task", "errand", "idea", "reminder", "scheduled"] as const;
 
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function formatDateValue(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
-function formatTimeValue(date: Date | null): string {
-  if (!date) {
-    return "Use smart time";
-  }
-
+function formatTimeValue(date: Date): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
@@ -65,6 +66,40 @@ function parseTimeValue(hour?: number | null, minute?: number | null): Date | nu
   return date;
 }
 
+// One of the two "Date" / "Time" tiles in the Phone alert card.
+function AlertTile({
+  label,
+  value,
+  onPress,
+  disabled,
+}: {
+  label: string;
+  value: string | null; // null = Smart
+  onPress: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      style={styles.tile}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${value ?? "Smart"}`}
+      accessibilityState={{ disabled }}
+    >
+      <Text style={type.caption}>{label}</Text>
+      {value ? (
+        <Text style={[type.body, styles.tileValue]}>{value}</Text>
+      ) : (
+        <View style={styles.smartValue}>
+          <Ionicons name="sparkles-outline" size={16} color={colors.primaryDark} />
+          <Text style={[type.body, styles.smartText]}>Smart</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
 export default function AddEditNoteScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteParams>();
@@ -73,7 +108,7 @@ export default function AddEditNoteScreen() {
 
   const isEditing = !!existingNote?._id;
   const [content, setContent] = useState(existingNote?.content || "");
-  const [listName, setListName] = useState(existingNote?.list_name || initialListName || "General");
+  const [listName, setListName] = useState(existingNote?.list_name || initialListName || GENERAL);
   const [categoryExplicit, setCategoryExplicit] = useState(existingNote?.category_explicit ?? false);
   const [selectedCategory, setSelectedCategory] = useState(existingNote?.category || "uncategorized");
   const [locationExplicit, setLocationExplicit] = useState(existingNote?.location_explicit ?? false);
@@ -95,9 +130,9 @@ export default function AddEditNoteScreen() {
       ? parseTimeValue(existingNote?.remind_at_hour, existingNote?.remind_at_minute)
       : null
   );
-  const [showDatePicker, setShowDatePicker] = useState(Platform.OS === "ios");
-  const [showTimePicker, setShowTimePicker] = useState(Platform.OS === "ios");
-  const [existingLists, setExistingLists] = useState<string[]>([]);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [existingLists, setExistingLists] = useState<string[]>([GENERAL]);
   const [saving, setSaving] = useState(false);
 
   useFocusEffect(
@@ -105,17 +140,18 @@ export default function AddEditNoteScreen() {
       Promise.all([getNotes(), getCustomLists()])
         .then(([notes, customLists]) => {
           // General first, then the other folders alphabetically
-          const names = folderNames(notes, customLists);
-          setExistingLists(names);
+          setExistingLists(folderNames(notes, customLists));
         })
         .catch(() => {});
       loadPlaces().then(setPlaces).catch(() => {});
     }, [])
   );
 
+  // The Save button is part of this screen (not a navigation header set up
+  // once), so it always calls the latest handleSave with the current values.
   const handleSave = async () => {
     const trimmed = content.trim();
-    const trimmedListName = listName.trim() || "General";
+    const trimmedListName = listName.trim() || GENERAL;
     const reminderDate = dateOverrideEnabled && selectedDate ? formatDateValue(selectedDate) : "";
     const reminderHour = timeOverrideEnabled && selectedTime ? selectedTime.getHours() : null;
     const reminderMinute = timeOverrideEnabled && selectedTime ? selectedTime.getMinutes() : null;
@@ -169,25 +205,6 @@ export default function AddEditNoteScreen() {
     }
   };
 
-  // The header button is set up once per effect run, so it must call the
-  // latest handleSave. Capturing handleSave directly saved stale state:
-  // changing only the time/date/category/location and tapping Update sent
-  // the old values.
-  const handleSaveRef = useRef(handleSave);
-  handleSaveRef.current = handleSave;
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <TouchableOpacity onPress={() => handleSaveRef.current()} disabled={saving}>
-          <Text style={styles.headerSave}>
-            {saving ? "Saving..." : isEditing ? "Update" : "Save"}
-          </Text>
-        </TouchableOpacity>
-      ),
-    });
-  }, [navigation, saving, isEditing]);
-
   const handleDateChange = (_event: DateTimePickerEvent, nextDate?: Date) => {
     if (Platform.OS !== "ios") {
       setShowDatePicker(false);
@@ -208,367 +225,197 @@ export default function AddEditNoteScreen() {
     }
   };
 
+  const resetToSmart = () => {
+    setDateOverrideEnabled(false);
+    setSelectedDate(null);
+    setTimeOverrideEnabled(false);
+    setSelectedTime(null);
+    setShowDatePicker(false);
+    setShowTimePicker(false);
+  };
+
+  const dateValue = dateOverrideEnabled && selectedDate ? formatDateValue(selectedDate) : null;
+  const timeValue = timeOverrideEnabled && selectedTime ? formatTimeValue(selectedTime) : null;
+  const folders = existingLists.includes(listName) ? existingLists : [...existingLists, listName];
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.listSection}>
-        <Text style={styles.sectionTitle}>List</Text>
-        <Text style={styles.sectionHint}>
-          Choose where this note belongs. You can move existing notes between lists.
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.listPills}
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
         >
-          {existingLists.map((name) => (
-            <TouchableOpacity
-              key={name}
-              style={[styles.pill, listName === name && styles.pillActive]}
-              onPress={() => setListName(name)}
-            >
-              <Text style={[styles.pillText, listName === name && styles.pillTextActive]}>
-                {name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.title} numberOfLines={1}>
+          {isEditing ? "Edit note" : "New note"}
+        </Text>
+        <PrimaryButton label="Save" onPress={handleSave} loading={saving} />
       </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="What's on your mind?"
-        value={content}
-        onChangeText={setContent}
-        multiline
-        autoFocus
-        textAlignVertical="top"
-      />
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Card>
+          <Text style={type.caption}>Note</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="What's on your mind?"
+            placeholderTextColor={colors.textMuted}
+            value={content}
+            onChangeText={setContent}
+            multiline
+            autoFocus
+            textAlignVertical="top"
+          />
+        </Card>
 
-      <View style={styles.categorySection}>
-        <Text style={styles.sectionTitle}>Category</Text>
-        <Text style={styles.sectionHint}>
-          Keep smart categorization, or override it if you want this note filed differently.
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.listPills}
-        >
-          <TouchableOpacity
-            style={[styles.pill, !categoryExplicit && styles.pillActive]}
-            onPress={() => setCategoryExplicit(false)}
-          >
-            <Text style={[styles.pillText, !categoryExplicit && styles.pillTextActive]}>
-              Smart
-            </Text>
-          </TouchableOpacity>
-          {CATEGORY_OPTIONS.map((category) => (
-            <TouchableOpacity
-              key={category}
-              style={[styles.pill, categoryExplicit && selectedCategory === category && styles.pillActive]}
-              onPress={() => {
-                setSelectedCategory(category);
-                setCategoryExplicit(true);
-              }}
-            >
-              <Text
-                style={[
-                  styles.pillText,
-                  categoryExplicit && selectedCategory === category && styles.pillTextActive,
-                ]}
-              >
-                {category}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <View style={styles.categorySection}>
-        <Text style={styles.sectionTitle}>Location</Text>
-        <Text style={styles.sectionHint}>
-          Keep smart location inference, or override it if this note belongs to a specific place.
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.listPills}
-        >
-          <TouchableOpacity
-            style={[styles.pill, !locationExplicit && styles.pillActive]}
-            onPress={() => setLocationExplicit(false)}
-          >
-            <Text style={[styles.pillText, !locationExplicit && styles.pillTextActive]}>
-              Smart
-            </Text>
-          </TouchableOpacity>
-          {places.map((place) => (
-            <TouchableOpacity
-              key={place.id}
-              style={[styles.pill, locationExplicit && selectedLocation === place.id && styles.pillActive]}
-              onPress={() => {
-                setSelectedLocation(place.id);
-                setLocationExplicit(true);
-              }}
-            >
-              <Text
-                style={[
-                  styles.pillText,
-                  locationExplicit && selectedLocation === place.id && styles.pillTextActive,
-                ]}
-              >
-                {place.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <View style={styles.reminderSection}>
-        <View style={styles.reminderHeader}>
-          <View style={styles.reminderCopy}>
-            <Text style={styles.reminderTitle}>Phone alerts for this note</Text>
-        <Text style={styles.reminderHint}>
-              Keep smart reminders on, or turn them off for notes that should stay silent.
-            </Text>
-          </View>
-          <Switch
+        <Card>
+          <ToggleRow
+            title="Phone alert"
+            caption="Turn off for notes that should stay silent."
             value={remindersEnabled}
             onValueChange={setRemindersEnabled}
-            trackColor={{ false: "#d7d7d7", true: "#A5D6A7" }}
-            thumbColor={remindersEnabled ? "#2E7D32" : "#f4f4f4"}
           />
-        </View>
-
-        <Text style={styles.helperLabel}>Reminder date override</Text>
-        <View style={styles.selectionRow}>
-          <TouchableOpacity
-            style={[styles.selectionButton, !remindersEnabled && styles.selectionButtonDisabled]}
-            disabled={!remindersEnabled}
-            onPress={() => setShowDatePicker((current) => !current)}
-          >
-            <Text style={[styles.selectionValue, !remindersEnabled && styles.selectionValueDisabled]}>
-              {dateOverrideEnabled
-                ? formatDateValue(selectedDate)
-                : existingNote?.remind_on_date
-                  ? `Smart: ${existingNote.remind_on_date}`
-                  : "Use smart date"}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.clearButton}
-            disabled={!remindersEnabled}
-            onPress={() => {
-              setDateOverrideEnabled(false);
-              setSelectedDate(null);
-            }}
-          >
-            <Text style={[styles.clearButtonText, !remindersEnabled && styles.selectionValueDisabled]}>
-              Smart
-            </Text>
-          </TouchableOpacity>
-        </View>
-        {showDatePicker && remindersEnabled && (
-          <View style={styles.pickerWrap}>
+          <View style={[styles.tiles, !remindersEnabled && styles.dimmed]}>
+            <AlertTile
+              label="Date"
+              value={dateValue}
+              disabled={!remindersEnabled}
+              onPress={() => setShowDatePicker((current) => !current)}
+            />
+            <AlertTile
+              label="Time"
+              value={timeValue}
+              disabled={!remindersEnabled}
+              onPress={() => setShowTimePicker((current) => !current)}
+            />
+          </View>
+          {showDatePicker && remindersEnabled && (
             <DateTimePicker
               value={selectedDate ?? new Date()}
               mode="date"
               display={Platform.OS === "ios" ? "inline" : "default"}
               onChange={handleDateChange}
             />
-          </View>
-        )}
-
-        <Text style={styles.helperLabel}>Reminder time override</Text>
-        <View style={styles.selectionRow}>
-          <TouchableOpacity
-            style={[styles.selectionButton, !remindersEnabled && styles.selectionButtonDisabled]}
-            disabled={!remindersEnabled}
-            onPress={() => setShowTimePicker((current) => !current)}
-          >
-            <Text style={[styles.selectionValue, !remindersEnabled && styles.selectionValueDisabled]}>
-              {timeOverrideEnabled
-                ? formatTimeValue(selectedTime)
-                : existingNote?.contexts.find((item) => typeof item === "string" && /^\d{2}:\d{2}$/.test(item))
-                  ? `Smart: ${existingNote.contexts.find((item) => typeof item === "string" && /^\d{2}:\d{2}$/.test(item))}`
-                  : "Use smart time"}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.clearButton}
-            disabled={!remindersEnabled}
-            onPress={() => {
-              setTimeOverrideEnabled(false);
-              setSelectedTime(null);
-            }}
-          >
-            <Text style={[styles.clearButtonText, !remindersEnabled && styles.selectionValueDisabled]}>
-              Smart
-            </Text>
-          </TouchableOpacity>
-        </View>
-        {showTimePicker && remindersEnabled && (
-          <View style={styles.pickerWrap}>
+          )}
+          {showTimePicker && remindersEnabled && (
             <DateTimePicker
               value={selectedTime ?? new Date()}
               mode="time"
               display={Platform.OS === "ios" ? "spinner" : "default"}
               onChange={handleTimeChange}
             />
+          )}
+          <View style={styles.resetRow}>
+            <Text style={[type.caption, styles.resetCaption]}>
+              Smart uses the date and time found in your note.
+            </Text>
+            <TextButton label="Reset to Smart" onPress={resetToSmart} />
           </View>
-        )}
-        <Text style={styles.helperFootnote}>
-          Leave these blank to use the smart time context already inferred from the note.
-        </Text>
-      </View>
-    </ScrollView>
+        </Card>
+
+        <Card title="Category">
+          <ChipRow style={styles.chips}>
+            <Chip
+              label="Smart"
+              icon="sparkles-outline"
+              selected={!categoryExplicit}
+              onPress={() => setCategoryExplicit(false)}
+            />
+            {CATEGORY_OPTIONS.map((category) => (
+              <Chip
+                key={category}
+                label={capitalize(category)}
+                selected={categoryExplicit && selectedCategory === category}
+                onPress={() => {
+                  setSelectedCategory(category);
+                  setCategoryExplicit(true);
+                }}
+              />
+            ))}
+          </ChipRow>
+        </Card>
+
+        <Card title="Place">
+          <ChipRow style={styles.chips}>
+            <Chip
+              label="Smart"
+              icon="sparkles-outline"
+              selected={!locationExplicit}
+              onPress={() => setLocationExplicit(false)}
+            />
+            {places.map((place) => (
+              <Chip
+                key={place.id}
+                label={place.name}
+                selected={locationExplicit && selectedLocation === place.id}
+                onPress={() => {
+                  setSelectedLocation(place.id);
+                  setLocationExplicit(true);
+                }}
+              />
+            ))}
+          </ChipRow>
+        </Card>
+
+        <Card title="Folder">
+          <ChipRow style={styles.chips}>
+            {folders.map((name) => (
+              <Chip key={name} label={name} selected={listName === name} onPress={() => setListName(name)} />
+            ))}
+          </ChipRow>
+        </Card>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
-  contentContainer: {
-    paddingBottom: 24,
-  },
-  listSection: {
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-    paddingVertical: 8,
-  },
-  listPills: {
-    paddingHorizontal: 12,
+  container: { flex: 1, backgroundColor: colors.background },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
+    paddingHorizontal: spacing.screen,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
-  pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: "#f0f0f0",
+  backButton: {
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
+    borderRadius: MIN_TOUCH_TARGET / 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  pillActive: {
-    backgroundColor: "#2E7D32",
-  },
-  pillText: {
-    fontSize: 13,
-    color: "#666",
-  },
-  pillTextActive: {
-    color: "#fff",
-    fontWeight: "600",
-  },
+  title: { flex: 1, fontFamily: fonts.display, fontSize: 22, color: colors.text },
+  content: { padding: spacing.screen, gap: spacing.cardGap },
   input: {
-    backgroundColor: "#fff",
-    padding: 16,
-    fontSize: 16,
-    lineHeight: 24,
-    minHeight: 220,
-  },
-  categorySection: {
-    backgroundColor: "#fff",
-    marginTop: 12,
-    paddingVertical: 14,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-    paddingHorizontal: 16,
-  },
-  sectionHint: {
+    fontFamily: fonts.bodySemi,
+    fontSize: 22,
+    lineHeight: 30,
+    color: colors.text,
+    minHeight: 60,
+    padding: 0,
     marginTop: 4,
-    marginBottom: 10,
-    fontSize: 13,
-    color: "#777",
-    lineHeight: 18,
-    paddingHorizontal: 16,
+    writingDirection: "auto",
   },
-  reminderSection: {
-    backgroundColor: "#fff",
-    marginTop: 12,
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#eee",
-  },
-  reminderHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-  },
-  reminderCopy: {
+  tiles: { flexDirection: "row", gap: 8, marginTop: 12 },
+  dimmed: { opacity: 0.45 },
+  tile: {
     flex: 1,
-  },
-  reminderTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-  },
-  reminderHint: {
-    marginTop: 4,
-    fontSize: 13,
-    color: "#777",
-    lineHeight: 18,
-  },
-  helperLabel: {
-    marginTop: 14,
-    marginBottom: 6,
-    fontSize: 13,
-    color: "#666",
-    fontWeight: "500",
-  },
-  selectionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  selectionButton: {
-    flex: 1,
+    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    paddingHorizontal: 12,
+    borderColor: colors.border,
+    borderRadius: 14,
     paddingVertical: 10,
-    backgroundColor: "#fafafa",
+    paddingHorizontal: 12,
+    minHeight: MIN_TOUCH_TARGET,
   },
-  selectionButtonDisabled: {
-    backgroundColor: "#f1f1f1",
-  },
-  selectionValue: {
-    fontSize: 14,
-    color: "#333",
-  },
-  selectionValueDisabled: {
-    color: "#999",
-  },
-  clearButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  clearButtonText: {
-    fontSize: 13,
-    color: "#2E7D32",
-    fontWeight: "600",
-  },
-  pickerWrap: {
-    marginTop: 10,
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: "#fff",
-  },
-  helperFootnote: {
-    marginTop: 8,
-    fontSize: 12,
-    lineHeight: 18,
-    color: "#888",
-  },
-  headerSave: {
-    color: "#2E7D32",
-    fontSize: 16,
-    fontWeight: "600",
-    marginRight: 4,
-  },
+  tileValue: { marginTop: 2 },
+  smartValue: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  smartText: { color: colors.primaryDark },
+  resetRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  resetCaption: { flex: 1 },
+  chips: { marginTop: 10 },
 });

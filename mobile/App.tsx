@@ -45,7 +45,9 @@ function NotesStack() {
         name="AddEditNote"
         component={AddEditNoteScreen}
         options={({ route }) => ({
-          title: route.params?.note?._id ? "Edit Note" : "New Note",
+          title: route.params?.note?._id ? "Edit note" : "New note",
+          // the screen draws its own header (back, title, Save)
+          headerShown: false,
         })}
       />
     </Stack.Navigator>
