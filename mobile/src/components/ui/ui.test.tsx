@@ -59,3 +59,9 @@ test("ToggleRow switch uses the primary color and reports changes", () => {
   act(() => sw.props.onValueChange(false));
   expect(onValueChange).toHaveBeenCalledWith(false);
 });
+
+test("Chip can show a color dot (category colors)", () => {
+  const tree = render(<Chip label="Errand" dotColor="#388E3C" />);
+  const dot = tree.root.findByProps({ testID: "chip-dot" });
+  expect(JSON.stringify(dot.props.style)).toContain("#388E3C");
+});

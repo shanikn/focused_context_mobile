@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fonts, MIN_TOUCH_TARGET, radius, type } from "../../theme";
 
@@ -13,6 +13,7 @@ export default function Chip({
   onPress,
   onLongPress,
   icon,
+  dotColor,
   disabled = false,
   accessibilityLabel,
   testID,
@@ -22,6 +23,7 @@ export default function Chip({
   onPress?: () => void;
   onLongPress?: () => void;
   icon?: IconName;
+  dotColor?: string; // small color dot before the label, e.g. a category color
   disabled?: boolean;
   accessibilityLabel?: string;
   testID?: string;
@@ -39,6 +41,7 @@ export default function Chip({
       testID={testID}
     >
       {icon ? <Ionicons name={icon} size={16} color={fg} /> : null}
+      {dotColor ? <View testID="chip-dot" style={[styles.dot, { backgroundColor: dotColor }]} /> : null}
       <Text style={[type.chip, styles.label, { color: fg }]} numberOfLines={1}>
         {label}
       </Text>
@@ -59,4 +62,6 @@ const styles = StyleSheet.create({
   selected: { backgroundColor: colors.primary },
   disabled: { opacity: 0.5 },
   label: { fontFamily: fonts.bodySemi },
+  // white ring so the dot stays visible on the selected (green) chip
+  dot: { width: 12, height: 12, borderRadius: 6, borderWidth: 1.5, borderColor: colors.surface },
 });

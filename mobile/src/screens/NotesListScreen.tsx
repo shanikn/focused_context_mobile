@@ -26,8 +26,14 @@ import { getReminderLocation } from "../lib/reminderPrefs";
 import { syncScheduledReminders } from "../services/scheduledReminders";
 import { loadPlaces } from "../services/placesStore";
 import { ServerPlace } from "../lib/userPlaces";
-import { CategoryColors, DEFAULT_CATEGORY_COLORS, getCategoryColors } from "../lib/categoryColors";
-import { Chip, ChipRow, SectionLabel } from "../components/ui";
+import {
+  CATEGORIES,
+  CategoryColors,
+  DEFAULT_CATEGORY_COLORS,
+  getCategoryColors,
+} from "../lib/categoryColors";
+import { ALL_CATEGORIES, filterNotes, hasActiveFilters } from "../lib/noteFilter";
+import { Chip, ChipRow, SectionLabel, TextButton } from "../components/ui";
 import { colors, fonts, MIN_TOUCH_TARGET, radius, spacing, type } from "../theme";
 
 type Nav = NativeStackNavigationProp<NotesStackParamList, "NotesList">;
@@ -47,14 +53,23 @@ export default function NotesListScreen() {
   const [customLists, setCustomLists] = useState<string[]>([]);
   const [showCreateListModal, setShowCreateListModal] = useState(false);
   const [newListName, setNewListName] = useState("");
+  const [query, setQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>(ALL_CATEGORIES);
 
   // All, then General, then the other folders alphabetically (no re-sorting here)
   const listNames = useMemo(() => folderTabs(notes, customLists), [notes, customLists]);
 
-  const filteredNotes = useMemo(() => {
-    if (activeTab === ALL) return notes;
-    return notes.filter((n) => (n.list_name || GENERAL) === activeTab);
-  }, [notes, activeTab]);
+  // folder tab + category chip + search, combined (lib/noteFilter.ts)
+  const filters = { folder: activeTab, category: categoryFilter, query };
+  const filteredNotes = useMemo(
+    () => filterNotes(notes, { folder: activeTab, category: categoryFilter, query }),
+    [notes, activeTab, categoryFilter, query]
+  );
+
+  const clearSearchAndFilter = () => {
+    setQuery("");
+    setCategoryFilter(ALL_CATEGORIES);
+  };
 
   const sections = useMemo(
     () => groupNotes(filteredNotes, new Date()).map((s) => ({ ...s, data: s.notes })),
@@ -183,6 +198,34 @@ export default function NotesListScreen() {
         </TouchableOpacity>
       </View>
 
+      {notes.length > 0 && (
+        <View style={styles.searchWrap}>
+          <View style={styles.search}>
+            <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+            <TextInput
+              style={styles.searchInput}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search notes"
+              placeholderTextColor={colors.textMuted}
+              returnKeyType="search"
+              autoCorrect={false}
+              accessibilityLabel="Search notes"
+            />
+            {query.length > 0 && (
+              <TouchableOpacity
+                style={styles.clearButton}
+                onPress={() => setQuery("")}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
+              >
+                <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -202,6 +245,25 @@ export default function NotesListScreen() {
                   />
                 ))}
               </ChipRow>
+              <ChipRow scroll style={[styles.chipsContent, styles.categoryChips]}>
+                <Chip
+                  label="All"
+                  icon="pricetags-outline"
+                  selected={categoryFilter === ALL_CATEGORIES}
+                  onPress={() => setCategoryFilter(ALL_CATEGORIES)}
+                  accessibilityLabel="All categories"
+                />
+                {CATEGORIES.map((category) => (
+                  <Chip
+                    key={category}
+                    label={category.charAt(0).toUpperCase() + category.slice(1)}
+                    dotColor={categoryColors[category]}
+                    selected={categoryFilter === category}
+                    onPress={() => setCategoryFilter(categoryFilter === category ? ALL_CATEGORIES : category)}
+                    accessibilityLabel={`${category.charAt(0).toUpperCase() + category.slice(1)} notes`}
+                  />
+                ))}
+              </ChipRow>
             </View>
           )}
 
@@ -210,6 +272,16 @@ export default function NotesListScreen() {
               <Ionicons name="document-text-outline" size={64} color={colors.border} />
               <Text style={[type.cardTitle, styles.emptyText]}>No notes yet</Text>
               <Text style={type.caption}>Tap + to create your first note</Text>
+            </View>
+          ) : filteredNotes.length === 0 ? (
+            <View style={styles.center}>
+              <Ionicons name="search-outline" size={56} color={colors.border} />
+              <Text style={[type.cardTitle, styles.emptyText]}>No matching notes</Text>
+              {hasActiveFilters(filters) ? (
+                <TextButton label="Clear search and filter" onPress={clearSearchAndFilter} />
+              ) : (
+                <Text style={type.caption}>This folder is empty</Text>
+              )}
             </View>
           ) : (
             <SectionList
@@ -313,6 +385,35 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   chips: { flexGrow: 0, paddingBottom: 4 },
+  categoryChips: { paddingTop: 8 },
+  searchWrap: { paddingHorizontal: spacing.screen, paddingBottom: 10 },
+  search: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    height: 48,
+    borderRadius: radius.chip,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingLeft: 14,
+    paddingRight: 4,
+  },
+  searchInput: {
+    flex: 1,
+    height: 48,
+    fontFamily: fonts.body,
+    fontSize: 16,
+    color: colors.text,
+    // Hebrew searches read right-to-left inside the LTR layout
+    writingDirection: "auto",
+  },
+  clearButton: {
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   chipsContent: { paddingHorizontal: spacing.screen },
   center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 4 },
   emptyText: { marginTop: 12 },
