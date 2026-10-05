@@ -54,7 +54,9 @@ export async function freshFix(timeoutMs: number = FIX_TIMEOUT_MS): Promise<Fix 
     timer = setTimeout(() => resolve(null), timeoutMs);
   });
   try {
-    const fix = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+    // inside .then so even a synchronous throw counts as "no fix"
+    const fix = Promise.resolve()
+      .then(() => Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }))
       .then(toFix)
       .catch(() => null);
     return await Promise.race([fix, timeout]);

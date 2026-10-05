@@ -60,6 +60,14 @@ jest.mock("../components/LocationPermissionFlow", () => ({
   useLocationPermissionFlow: () => ({ screen: null, start: jest.fn(), proceed: jest.fn(), skip: jest.fn() }),
   LocationPermissionModal: () => null,
 }));
+jest.mock("../components/MapPickerModal", () => {
+  const { View } = require("react-native");
+  return (props: { visible: boolean; placeName: string; initialView: unknown; onSave: unknown }) =>
+    props.visible ? (
+      <View testID="map-picker" accessibilityLabel={props.placeName} initialView={props.initialView} onSave={props.onSave} />
+    ) : null;
+});
+jest.mock("../services/addressSearch", () => ({ findAddress: jest.fn().mockResolvedValue([]) }));
 // the color wheel needs native Reanimated; not under test here
 jest.mock("../components/CategoryColorModal", () => () => null);
 jest.mock("../components/AddressSearchModal", () => {
@@ -131,14 +139,16 @@ test("Where you are now: places plus 'Not at a place'; tapping one sets it", asy
   expect(setReminderLocation).toHaveBeenLastCalledWith("unknown");
 });
 
-test("a place without a location: 'No location set', no radius chips, 'Set location' offers both ways", async () => {
+test("a place without a location: 'No location set', no radius chips, 'Set location' offers three ways", async () => {
   const tree = await renderScreen();
   expect(allText(tree.root)).toContain("No location set");
   expect(tree.root.findAllByType(TouchableOpacity).some((t) => t.props.accessibilityLabel === "Gym radius 400 m")).toBe(
     false
   );
   await act(async () => byLabel(tree, "Set location for Gym").props.onPress());
-  expect(lastAlertButtons()).toEqual(["Use current location", "Search address", "Cancel"]);
+  // Android shows at most 3 alert buttons; tapping outside closes it
+  expect(lastAlertButtons()).toEqual(["Use current location", "Search address", "Pick on map"]);
+  expect(alertSpy.mock.calls.at(-1)?.[3]).toEqual({ cancelable: true });
   await pressAlertButton("Search address");
   expect(tree.root.findByProps({ testID: "address-search" }).props.accessibilityLabel).toBe("Gym");
 });
@@ -153,13 +163,16 @@ test("a place with a location: subtitle with address and radius, radius chips re
   expect(syncGeofencing).toHaveBeenCalled();
 });
 
-test("the ⋯ menu offers the other place actions (removing the location is its own button)", async () => {
+test("the ⋯ menu fits Android's 3 alert buttons: Change location, Rename, Delete", async () => {
   await setPlaceCoords("id-home", { latitude: 1, longitude: 2 });
   const tree = await renderScreen();
   await act(async () => byLabel(tree, "Home options").props.onPress());
-  expect(lastAlertButtons()).toEqual(["Use current location", "Search address", "Rename", "Delete", "Cancel"]);
+  expect(lastAlertButtons()).toEqual(["Change location", "Rename", "Delete"]);
+  expect(alertSpy.mock.calls.at(-1)?.[3]).toEqual({ cancelable: true });
+  await pressAlertButton("Change location");
+  expect(lastAlertButtons()).toEqual(["Use current location", "Search address", "Pick on map"]);
   await act(async () => byLabel(tree, "Gym options").props.onPress());
-  expect(lastAlertButtons()).toEqual(["Use current location", "Search address", "Rename", "Delete", "Cancel"]);
+  expect(lastAlertButtons()).toEqual(["Change location", "Rename", "Delete"]);
 });
 
 test("phone notifications switch and Check alerts now still work", async () => {
@@ -456,4 +469,60 @@ test("the store alert choice is hidden while store alerts are off", async () => 
   const tree = await renderScreen();
   const labels = tree.root.findAllByType(TouchableOpacity).map((t) => t.props.accessibilityLabel);
   expect(labels).not.toContain("Alert when passing by");
+});
+
+describe("Pick on map", () => {
+  const Location = require("expo-location");
+  const { findAddress } = jest.requireMock("../services/addressSearch");
+
+  afterEach(() => {
+    (Location.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(null);
+  });
+
+  async function openMapFor(tree: ReactTestRenderer, name: string) {
+    await act(async () => byLabel(tree, `Set location for ${name}`).props.onPress());
+    await pressAlertButton("Pick on map");
+    return tree.root.findByProps({ testID: "map-picker" });
+  }
+
+  test("opens centered on where I am when the place has no location yet", async () => {
+    (Location.getLastKnownPositionAsync as jest.Mock).mockResolvedValue({
+      coords: { latitude: 32.17, longitude: 34.84, accuracy: 20 },
+      timestamp: Date.now(),
+    });
+    const tree = await renderScreen();
+    const map = await openMapFor(tree, "Gym");
+    expect(map.props.accessibilityLabel).toBe("Gym");
+    expect(map.props.initialView).toMatchObject({ latitude: 32.17, longitude: 34.84, radius: 200, from: "current" });
+  });
+
+  test("opens on the place's saved location from the place menu", async () => {
+    await setPlaceCoords("id-home", { latitude: 32.1, longitude: 34.8 }, 400);
+    const tree = await renderScreen();
+    await act(async () => byLabel(tree, "Home options").props.onPress());
+    await pressAlertButton("Change location");
+    await pressAlertButton("Pick on map");
+    expect(tree.root.findByProps({ testID: "map-picker" }).props.initialView).toMatchObject({
+      latitude: 32.1,
+      longitude: 34.8,
+      radius: 400,
+      from: "place",
+    });
+  });
+
+  test("Save here stores the point, closes the map, then fills the address", async () => {
+    (findAddress as jest.Mock).mockResolvedValue([{ label: "5 Sirkin St, Herzliya", latitude: 32.1666, longitude: 34.8439 }]);
+    const tree = await renderScreen();
+    const map = await openMapFor(tree, "Gym");
+    await act(async () => map.props.onSave({ latitude: 32.1663, longitude: 34.8433 }));
+    expect(tree.root.findAll((n) => n.props.testID === "map-picker")).toHaveLength(0);
+    expect((await getAllCoords())["id-gym"]).toMatchObject({
+      latitude: 32.1663,
+      longitude: 34.8433,
+      source: "map",
+      address: "5 Sirkin St, Herzliya",
+    });
+    expect(syncGeofencing).toHaveBeenCalled();
+    expect(allText(tree.root)).toContain("5 Sirkin St, Herzliya · 200 m");
+  });
 });

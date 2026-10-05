@@ -49,6 +49,10 @@ import { distanceMeters } from "../lib/geo";
 const REFINE_MIN_MOVE_M = 25;
 import { AddressResult } from "../lib/nominatim";
 import PlaceEditorModal from "../components/PlaceEditorModal";
+import MapPickerModal from "../components/MapPickerModal";
+import { initialMapView, MapView } from "../lib/mapPick";
+import { LatLon } from "../lib/geo";
+import { fillPickedAddress, savePickedPoint } from "../services/mapPick";
 import AddressSearchModal from "../components/AddressSearchModal";
 import CategoryColorModal from "../components/CategoryColorModal";
 import {
@@ -99,6 +103,7 @@ export default function SettingsScreen() {
   // place editor: null = closed, { place: null } = add, { place } = rename
   const [editor, setEditor] = useState<{ place: UserPlace | null } | null>(null);
   const [addressFor, setAddressFor] = useState<UserPlace | null>(null);
+  const [mapFor, setMapFor] = useState<{ place: UserPlace; view: MapView } | null>(null);
   const [categoryColors, setCategoryColors] = useState<CategoryColors>(DEFAULT_CATEGORY_COLORS);
   const [colorFor, setColorFor] = useState<Category | null>(null);
 
@@ -240,6 +245,45 @@ export default function SettingsScreen() {
     Alert.alert("Location saved", `${place.name}: ${result.label}`);
     await afterPlacesChanged();
     await recheckWhereIAm(place.id);
+  };
+
+  // Opens on the place's saved location, else where the phone is (any recent
+  // position will do for centering a map), else a default view.
+  const handlePickOnMap = async (place: UserPlace) => {
+    let position: LatLon | null = null;
+    if (!place.coords) {
+      const granted = await getGrantedPermissions().catch(() => null);
+      if (granted?.foreground) {
+        position = await recentFix({ maxAgeMs: 30 * 60 * 1000, maxAccuracyM: 2000 });
+        if (!position) {
+          setLocatingPlaceId(place.id);
+          position = await freshFix();
+          setLocatingPlaceId(null);
+        }
+      }
+    }
+    setMapFor({ place, view: initialMapView(place, position) });
+  };
+
+  // "Save here": the point is saved right away; the address follows when the
+  // backend's reverse lookup answers
+  const handleMapSave = async (point: LatLon) => {
+    const place = mapFor?.place;
+    setMapFor(null);
+    if (!place) {
+      return;
+    }
+    try {
+      await savePickedPoint(place.id, point);
+      await afterPlacesChanged();
+      await recheckWhereIAm(place.id);
+    } catch {
+      Alert.alert("Couldn't save the location", "Try again.");
+      return;
+    }
+    if (await fillPickedAddress(place.id, point)) {
+      await refreshPlaces();
+    }
   };
 
   const handleEditorSave = async (name: string, keywords: string[]) => {
@@ -435,26 +479,29 @@ export default function SettingsScreen() {
   };
 
   // "Set location" (no location yet): the two ways to set one
+  // Android shows at most 3 alert buttons, so no Cancel: tapping outside closes it
   const openSetLocation = (place: UserPlace) => {
-    Alert.alert(`Set ${place.name}'s location`, undefined, [
-      { text: "Use current location", onPress: () => handleUseCurrentLocation(place) },
-      { text: "Search address", onPress: () => setAddressFor(place) },
-      { text: "Cancel", style: "cancel" },
-    ]);
+    Alert.alert(
+      `Set ${place.name}'s location`,
+      undefined,
+      [
+        { text: "Use current location", onPress: () => handleUseCurrentLocation(place) },
+        { text: "Search address", onPress: () => setAddressFor(place) },
+        { text: "Pick on map", onPress: () => handlePickOnMap(place) },
+      ],
+      { cancelable: true }
+    );
   };
 
-  // ⋯ menu: every action for a place
+  // ⋯ menu: every action for a place, in Android's 3-button limit (more
+  // buttons were silently dropped there); the location ways are one step in
   const openPlaceMenu = (place: UserPlace) => {
     const buttons: AlertButton[] = [
-      { text: "Use current location", onPress: () => handleUseCurrentLocation(place) },
-      { text: "Search address", onPress: () => setAddressFor(place) },
+      { text: "Change location", onPress: () => openSetLocation(place) },
       { text: "Rename", onPress: () => setEditor({ place }) },
-    ];
-    buttons.push(
       { text: "Delete", style: "destructive", onPress: () => handleDeletePlace(place) },
-      { text: "Cancel", style: "cancel" }
-    );
-    Alert.alert(place.name, undefined, buttons);
+    ];
+    Alert.alert(place.name, undefined, buttons, { cancelable: true });
   };
 
   return (
@@ -687,6 +734,15 @@ export default function SettingsScreen() {
         onSave={handleEditorSave}
         onCancel={() => setEditor(null)}
       />
+      {mapFor && (
+        <MapPickerModal
+          visible
+          placeName={mapFor.place.name}
+          initialView={mapFor.view}
+          onSave={handleMapSave}
+          onCancel={() => setMapFor(null)}
+        />
+      )}
       <AddressSearchModal
         visible={addressFor !== null}
         placeName={addressFor?.name ?? ""}
