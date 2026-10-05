@@ -106,7 +106,8 @@ export function searchErrorMessage(error: unknown): string {
       case "blocked":
         return `The address service refused the request (HTTP ${error.status}).`;
       case "rate_limited":
-        return "Too many address searches. Wait a moment and try again.";
+        // our server's message ("...try again in a minute" / "...tomorrow"), else the general one
+        return error.detail || "Too many searches, try again in a minute.";
       case "http":
         return `The address service had a problem (HTTP ${error.status}). Try again later.`;
       case "network":
@@ -158,7 +159,9 @@ export async function searchAddress(
     }
     console.warn("Address search: HTTP", response.status, body);
     const kind = response.status === 403 ? "blocked" : response.status === 429 ? "rate_limited" : "http";
-    throw new AddressSearchError(kind, `Address search failed (${response.status})`, response.status, body);
+    // detail is shown for a 429 (the server's own message), so never the raw body there
+    const detail = kind === "rate_limited" ? undefined : body;
+    throw new AddressSearchError(kind, `Address search failed (${response.status})`, response.status, detail);
   }
   try {
     return parseResults(await response.json());

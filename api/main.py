@@ -29,6 +29,7 @@ from auth import FirebaseDeleteError, delete_firebase_user, get_user_id  # noqa:
 import geocode  # noqa: E402
 import nearby  # noqa: E402
 import maps_links  # noqa: E402
+import ratelimit  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -139,6 +140,41 @@ def require_user_id(authorization: Optional[str]) -> str:
     return user_id
 
 
+# ---- per-user rate limits (in memory; one server instance) ----
+
+# search also has a daily cap: each Google Places search costs money
+SEARCH_LIMIT = ratelimit.limiter("search", [(30, 60), (300, 24 * 3600)])
+NEARBY_LIMIT = ratelimit.limiter("nearby", [(30, 60)])
+LINK_LIMIT = ratelimit.limiter("resolve-link", [(30, 60)])
+NOTE_WRITE_LIMIT = ratelimit.limiter("note-write", [(60, 60)])  # create + update together
+ACCOUNT_DELETE_LIMIT = ratelimit.limiter("account-delete", [(3, 3600)])
+
+
+def _limit_message(what: str, window: int) -> str:
+    if window >= 24 * 3600:
+        return f"Too many {what} today, try again tomorrow."
+    if window >= 3600:
+        return f"Too many {what}, try again in an hour."
+    return f"Too many {what}, try again in a minute."
+
+
+def enforce_limit(limit: ratelimit.RateLimiter, user_id: str, what: str):
+    """429 with a message the app can show, e.g. "Too many searches, try
+    again in a minute." Blocked calls don't do any work."""
+    if not ratelimit.enabled():
+        return
+    blocked = limit.blocked(user_id)
+    if blocked:
+        retry_after, window = blocked
+        message = _limit_message(what, window)
+        logging.warning("Rate limited: %s", limit.name)
+        raise HTTPException(
+            status_code=429,
+            detail={"kind": "too_many_requests", "message": message, "retry_after": retry_after},
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
 # save note, ingest it, and categorize it
 @app.post("/notes/")
 def create_note(
@@ -146,6 +182,7 @@ def create_note(
     authorization: Optional[str] = Header(None),
 ):
     user_id = require_user_id(authorization)
+    enforce_limit(NOTE_WRITE_LIMIT, user_id, "changes")
     note = Note(
         content=request.content,
         list_name=request.list_name,
@@ -218,6 +255,7 @@ def change_note(
     authorization: Optional[str] = Header(None),
 ):
     user_id = require_user_id(authorization)
+    enforce_limit(NOTE_WRITE_LIMIT, user_id, "changes")
     fields = {}
     if content is not None:
         fields["content"] = content
@@ -307,7 +345,8 @@ def search_places(
     """Top 5 address matches for q: Google Places when the server has a key
     (biased toward lat/lon if sent), else Nominatim. Coordinates are only
     returned to the phone, never stored here."""
-    require_user_id(authorization)
+    user_id = require_user_id(authorization)
+    enforce_limit(SEARCH_LIMIT, user_id, "searches")
     try:
         return geocode.search(q, lat=lat, lon=lon)
     except geocode.GeocodeError as e:
@@ -333,7 +372,8 @@ def nearby_stores(
 ):
     """Up to 20 stores of this type ({id, name, lat, lon}, nearest first)
     around the phone, for errand alerts. Nothing is stored."""
-    require_user_id(authorization)
+    user_id = require_user_id(authorization)
+    enforce_limit(NEARBY_LIMIT, user_id, "store lookups")
     if type not in nearby.STORE_SELECTORS:
         raise HTTPException(status_code=422, detail=f"type must be one of {sorted(nearby.STORE_SELECTORS)}")
     try:
@@ -355,7 +395,8 @@ _LINK_STATUS = {"not_allowed": 422, "no_coordinates": 422, "network": 504}
 def resolve_maps_link(url: str, authorization: Optional[str] = Header(None)):
     """Coordinates of a Google Maps link (short maps.app.goo.gl links are
     followed, Google hosts only). Nothing is stored."""
-    require_user_id(authorization)
+    user_id = require_user_id(authorization)
+    enforce_limit(LINK_LIMIT, user_id, "links")
     try:
         lat, lon = maps_links.resolve(url)
     except maps_links.LinkError as e:
@@ -429,6 +470,7 @@ def delete_account(authorization: Optional[str] = Header(None)):
     places, vectors), then the Firebase user. Safe to repeat: data first, so
     if Firebase fails the data is already gone and a retry finishes the job."""
     user_id = require_user_id(authorization)
+    enforce_limit(ACCOUNT_DELETE_LIMIT, user_id, "attempts")
     deleted = delete_user_data(user_id)
     try:
         firebase_user = delete_firebase_user(user_id)

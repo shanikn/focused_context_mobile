@@ -12,6 +12,8 @@ os.environ["CHROMA_PATH"] = TEST_CHROMA_PATH
 # never call the real Google Places API from tests: an empty key means "no
 # key", and load_dotenv() won't replace a variable that's already set
 os.environ["GOOGLE_MAPS_API_KEY"] = ""
+# the suite makes many requests as one user; test_rate_limits.py turns them on
+os.environ["RATE_LIMITS"] = "off"
 
 # start every run from empty test stores, so leftovers from a crashed run
 # can't pollute relevance results

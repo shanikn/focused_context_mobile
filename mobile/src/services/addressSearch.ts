@@ -1,6 +1,8 @@
 import { ApiError } from "../api/client";
 import { geocodeViaBackend } from "../api/geocode";
 import { AddressResult, AddressSearchError, cleanQuery, searchAddress } from "../lib/nominatim";
+import { LatLon } from "../lib/geo";
+import { recentFix } from "./currentPosition";
 
 // Address search for the app. Goes through our backend (/places/search), which
 // talks to Nominatim with the server's identity, rate limit and cache.
@@ -8,11 +10,28 @@ import { AddressResult, AddressSearchError, cleanQuery, searchAddress } from "..
 // an older version without /places/search (404).
 
 interface Deps {
-  viaBackend: (query: string) => Promise<AddressResult[]>;
+  viaBackend: (query: string, near?: LatLon) => Promise<AddressResult[]>;
   direct: (query: string) => Promise<AddressResult[]>;
+  // where the phone is, if it knows recently; never waits for a new fix
+  near?: () => Promise<LatLon | null>;
 }
 
-const defaultDeps: Deps = { viaBackend: geocodeViaBackend, direct: (q) => searchAddress(q) };
+// the last known position, if under 10 minutes old and within 2 km accuracy
+async function recentNear(): Promise<LatLon | null> {
+  const fix = await recentFix({ maxAgeMs: 10 * 60 * 1000, maxAccuracyM: 2000 });
+  return fix ? { latitude: fix.latitude, longitude: fix.longitude } : null;
+}
+
+const defaultDeps: Deps = { viaBackend: geocodeViaBackend, direct: (q) => searchAddress(q), near: recentNear };
+
+function serverMessage(body: string): string | undefined {
+  try {
+    const message = JSON.parse(body)?.detail?.message;
+    return typeof message === "string" ? message : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function upstreamKind(body: string): string | undefined {
   try {
@@ -35,8 +54,14 @@ export async function findAddress(query: string, deps: Deps = defaultDeps): Prom
   if (!cleaned) {
     return [];
   }
+  let near: LatLon | null = null;
   try {
-    return await deps.viaBackend(cleaned);
+    near = deps.near ? await deps.near() : null;
+  } catch {
+    near = null; // no permission or no fix: search without it
+  }
+  try {
+    return await (near ? deps.viaBackend(cleaned, near) : deps.viaBackend(cleaned));
   } catch (e) {
     if (e instanceof ApiError) {
       if (e.status === 404) {
@@ -45,7 +70,8 @@ export async function findAddress(query: string, deps: Deps = defaultDeps): Prom
       const kind = upstreamKind(e.body);
       console.warn("Address search via backend failed", e.status, e.body.slice(0, 200));
       if (e.status === 429) {
-        throw new AddressSearchError("rate_limited", e.message, 429);
+        // our own per-user limit sends a message to show; Nominatim's doesn't
+        throw new AddressSearchError("rate_limited", e.message, 429, serverMessage(e.body));
       }
       if (e.status === 504) {
         throw new AddressSearchError("timeout", e.message, 504);

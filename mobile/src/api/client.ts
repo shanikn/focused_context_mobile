@@ -33,6 +33,22 @@ let tokenProvider: AuthTokenProvider | null = null;
 let onAuthExpired: (() => void) | null = null;
 
 // a fixed token, used only when there's no provider (tests)
+// What to show for a failed request: the server's own message when it sends
+// one (e.g. "Too many changes, try again in a minute."), else the fallback.
+export function apiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    try {
+      const message = JSON.parse(error.body)?.detail?.message;
+      if (typeof message === "string" && message) {
+        return message;
+      }
+    } catch {
+      // not JSON
+    }
+  }
+  return fallback;
+}
+
 export function setAuthToken(token: string | null) {
   authToken = token;
 }

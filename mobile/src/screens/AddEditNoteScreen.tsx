@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from "@react-navigation/native";
+import { apiErrorMessage } from "../api/client";
 import { createNote, updateNote, getNotes } from "../api/notes";
 import { NotesStackParamList } from "../../App";
 import { getCustomLists } from "../lib/listPrefs";
@@ -201,7 +202,7 @@ export default function AddEditNoteScreen() {
       syncStoreAlerts();
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to save note");
+      Alert.alert("Error", apiErrorMessage(err, err?.message || "Failed to save note"));
     } finally {
       setSaving(false);
     }

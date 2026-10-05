@@ -252,3 +252,16 @@ test("category chips: the four kinds; an old kind shows as To-do", async () => {
   await press(tree, "Save");
   expect(updateNote).toHaveBeenLastCalledWith("note-1", expect.objectContaining({ category: "todo" }));
 });
+
+test("too many saves: the server's message is shown", async () => {
+  const { Alert } = require("react-native");
+  const { ApiError } = jest.requireActual("../api/client");
+  const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+  (updateNote as jest.Mock).mockRejectedValueOnce(
+    new ApiError(429, JSON.stringify({ detail: { kind: "too_many_requests", message: "Too many changes, try again in a minute." } }))
+  );
+  const tree = await renderScreen({ note: EXISTING });
+  await press(tree, "Save");
+  expect(alert).toHaveBeenCalledWith("Error", "Too many changes, try again in a minute.");
+  alert.mockRestore();
+});

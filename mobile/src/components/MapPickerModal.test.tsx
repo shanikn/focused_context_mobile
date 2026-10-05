@@ -119,7 +119,7 @@ describe("search on the map", () => {
     (findAddress as jest.Mock).mockRejectedValue(new AddressSearchError("rate_limited", "429", 429));
     const tree = await render();
     await search(tree, "Rothschild 10");
-    expect(textOf(tree)).toContain("Too many address searches");
+    expect(textOf(tree)).toContain("Too many searches, try again in a minute.");
   });
 
   test("the search box takes Hebrew", async () => {

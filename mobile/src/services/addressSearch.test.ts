@@ -76,3 +76,40 @@ test("backend unreachable -> network, with the underlying error", async () => {
   expect(e.kind).toBe("network");
   expect(searchErrorMessage(e)).toMatch(/Network request failed/);
 });
+
+describe("near me", () => {
+  test("a recent location goes with the search", async () => {
+    const backend = jest.fn().mockResolvedValue(RESULTS);
+    const near = jest.fn().mockResolvedValue({ latitude: 32.17, longitude: 34.84 });
+    await findAddress("Rothschild 10", { viaBackend: backend, direct: jest.fn(), near });
+    expect(backend).toHaveBeenCalledWith("Rothschild 10", { latitude: 32.17, longitude: 34.84 });
+  });
+
+  test("no recent location, or it fails: the search goes without one", async () => {
+    const backend = jest.fn().mockResolvedValue(RESULTS);
+    await findAddress("Rothschild 10", { viaBackend: backend, direct: jest.fn(), near: async () => null });
+    await findAddress("Rothschild 10", {
+      viaBackend: backend,
+      direct: jest.fn(),
+      near: async () => {
+        throw new Error("no permission");
+      },
+    });
+    expect(backend.mock.calls).toEqual([["Rothschild 10"], ["Rothschild 10"]]);
+  });
+});
+
+test("the server's own limit (429 too_many_requests): 'Too many searches, try again in a minute.'", async () => {
+  const e = await errorFrom(
+    new ApiError(429, '{"detail":{"kind":"too_many_requests","message":"Too many searches, try again in a minute."}}')
+  );
+  expect(e.kind).toBe("rate_limited");
+  expect(searchErrorMessage(e)).toBe("Too many searches, try again in a minute.");
+});
+
+test("the daily limit shows the server's message", async () => {
+  const e = await errorFrom(
+    new ApiError(429, '{"detail":{"kind":"too_many_requests","message":"Too many searches today, try again tomorrow."}}')
+  );
+  expect(searchErrorMessage(e)).toBe("Too many searches today, try again tomorrow.");
+});

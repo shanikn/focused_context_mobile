@@ -139,7 +139,7 @@ describe("errors say what actually went wrong", () => {
   test("429: too many searches", async () => {
     const e = await failWith(jest.fn().mockResolvedValue({ ok: false, status: 429, text: async () => "" }));
     expect((e as AddressSearchError).kind).toBe("rate_limited");
-    expect(searchErrorMessage(e)).toMatch(/too many/i);
+    expect(searchErrorMessage(e)).toBe("Too many searches, try again in a minute.");
   });
 
   test("other HTTP status: shows the status", async () => {
