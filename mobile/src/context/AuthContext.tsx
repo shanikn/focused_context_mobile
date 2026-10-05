@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { auth } from "../config/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { setAuthToken } from "../api/client";
+import { connectApiToFirebase } from "../services/apiAuth";
 
 // authcontext- auth logic layer, conects auth and firebase
 
@@ -27,17 +27,17 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
 
     useEffect(() => {
+        // every API request asks Firebase for a fresh ID token (they expire after an hour)
+        connectApiToFirebase();
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
                 const idToken = await firebaseUser.getIdToken();
                 setUser(firebaseUser);
                 setToken(idToken);
-                setAuthToken(idToken);
             }
             else {
                 setUser(null);
                 setToken(null);
-                setAuthToken(null);
             }
             setLoading(false);
         });

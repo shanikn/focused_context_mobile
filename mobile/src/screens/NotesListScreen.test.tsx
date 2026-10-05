@@ -1,8 +1,9 @@
 import React from "react";
-import { Text, TextInput, TouchableOpacity } from "react-native";
+import { Alert, Text, TextInput, TouchableOpacity } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import TestRenderer, { act, ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
 import NotesListScreen from "./NotesListScreen";
+import { getNotes } from "../api/notes";
 import { Note } from "../types/notes";
 
 // created b (oldest), c, a (newest); a is due today, the others are smart alerts
@@ -36,11 +37,16 @@ const NOTES = [
   },
 ] as unknown as Note[];
 
+// the last focus callback, so a test can "come back" to the screen
+let mockRefocus: () => void = () => {};
 jest.mock("@react-navigation/native", () => {
   const React = require("react");
   return {
     useNavigation: () => ({ navigate: jest.fn(), getParent: () => ({ navigate: jest.fn() }) }),
-    useFocusEffect: (cb: () => void) => React.useEffect(() => cb(), []),
+    useFocusEffect: (cb: () => void) => {
+      mockRefocus = cb;
+      React.useEffect(() => cb(), []);
+    },
   };
 });
 jest.mock("react-native-safe-area-context", () => {
@@ -194,5 +200,64 @@ describe("Recent / Upcoming toggle", () => {
       expect(shownNotes(tree)).toEqual(["Buy milk"]);
       await act(async () => tree.unmount());
     }
+  });
+});
+
+describe("loading errors", () => {
+  const mockedGetNotes = getNotes as jest.Mock;
+  let alertSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    alertSpy.mockRestore();
+    mockedGetNotes.mockImplementation(async () => NOTES);
+  });
+
+  const refocus = async () => {
+    await act(async () => mockRefocus());
+  };
+
+  test("coming back (e.g. from Settings) when the refetch fails: no error, the notes stay", async () => {
+    const tree = await renderScreen();
+    expect(shownNotes(tree)).toHaveLength(3);
+    mockedGetNotes.mockRejectedValueOnce(new Error("API error 401"));
+    await refocus();
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(allText(tree)).not.toMatch(/couldn't load|failed to load/i);
+    expect(shownNotes(tree)).toHaveLength(3);
+  });
+
+  test("an older refetch that fails after a newer one succeeded is ignored", async () => {
+    let failOld!: (e: Error) => void;
+    const tree = await renderScreen();
+    mockedGetNotes.mockImplementationOnce(() => new Promise((_, reject) => (failOld = reject)));
+    await refocus(); // first refetch, still in flight
+    await refocus(); // second refetch succeeds
+    await act(async () => failOld(new Error("aborted")));
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(allText(tree)).not.toMatch(/couldn't load/i);
+    expect(shownNotes(tree)).toHaveLength(3);
+  });
+
+  test("the first load fails with nothing to show: an error with Try again, cleared on success", async () => {
+    mockedGetNotes.mockRejectedValueOnce(new Error("offline"));
+    const tree = await renderScreen();
+    expect(shownNotes(tree)).toEqual([]);
+    expect(allText(tree)).toContain("Couldn't load your notes");
+    expect(allText(tree)).not.toContain("No notes yet");
+    await act(async () => byLabel(tree, "Try again").props.onPress());
+    expect(allText(tree)).not.toContain("Couldn't load your notes");
+    expect(shownNotes(tree)).toHaveLength(3);
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  test("folder list storage failing doesn't hide the notes", async () => {
+    const { getCustomLists } = jest.requireMock("../lib/listPrefs");
+    getCustomLists.mockRejectedValueOnce(new Error("storage"));
+    const tree = await renderScreen();
+    expect(shownNotes(tree)).toHaveLength(3);
+    expect(alertSpy).not.toHaveBeenCalled();
   });
 });

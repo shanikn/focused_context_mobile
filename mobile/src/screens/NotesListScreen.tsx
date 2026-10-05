@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   View,
   SectionList,
@@ -53,6 +53,10 @@ export default function NotesListScreen() {
   const [categoryColors, setCategoryColors] = useState<CategoryColors>(DEFAULT_CATEGORY_COLORS);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // the last load failed; shown only when there are no notes to show
+  const [loadFailed, setLoadFailed] = useState(false);
+  // focus refetches can overlap: only the newest one may update the screen
+  const latestFetch = useRef(0);
   const [activeTab, setActiveTab] = useState(ALL);
   const [customLists, setCustomLists] = useState<string[]>([]);
   const [showCreateListModal, setShowCreateListModal] = useState(false);
@@ -92,26 +96,45 @@ export default function NotesListScreen() {
   );
 
   const fetchNotes = useCallback(async () => {
+    const fetchId = ++latestFetch.current;
+    const isLatest = () => fetchId === latestFetch.current;
     try {
       const [data, savedLists, userPlaces, colorsByCategory, location] = await Promise.all([
         getNotes(),
-        getCustomLists(),
+        getCustomLists().catch(() => null),
         loadPlaces().catch(() => []),
         getCategoryColors().catch(() => DEFAULT_CATEGORY_COLORS),
         getReminderLocation().catch(() => null),
       ]);
+      if (!isLatest()) {
+        return;
+      }
       setNotes(data);
       setPlaces(userPlaces);
       setCategoryColors(colorsByCategory);
-      setCustomLists(savedLists);
+      if (savedLists) {
+        setCustomLists(savedLists);
+      }
       setCurrentLocation(location);
+      setLoadFailed(false);
     } catch {
-      Alert.alert("Error", "Failed to load notes");
+      // a failed refetch keeps the notes already on screen; the error is
+      // shown only when there's nothing to show (see below)
+      if (isLatest()) {
+        setLoadFailed(true);
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (isLatest()) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
+
+  const handleRetry = () => {
+    setLoading(true);
+    fetchNotes();
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -307,7 +330,14 @@ export default function NotesListScreen() {
             </View>
           )}
 
-          {notes.length === 0 ? (
+          {notes.length === 0 && loadFailed ? (
+            <View style={styles.center}>
+              <Ionicons name="cloud-offline-outline" size={56} color={colors.border} />
+              <Text style={[type.cardTitle, styles.emptyText]}>Couldn't load your notes</Text>
+              <Text style={type.caption}>Check your connection and try again</Text>
+              <TextButton label="Try again" onPress={handleRetry} />
+            </View>
+          ) : notes.length === 0 ? (
             <View style={styles.center}>
               <Ionicons name="document-text-outline" size={64} color={colors.border} />
               <Text style={[type.cardTitle, styles.emptyText]}>No notes yet</Text>

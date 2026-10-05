@@ -24,27 +24,72 @@ export class ApiError extends Error {
   }
 }
 
+// Gets the Firebase ID token for each request. getIdToken() returns the
+// cached token and refreshes it when it's about to expire (they last an hour);
+// forceRefresh=true always fetches a new one.
+export type AuthTokenProvider = (forceRefresh: boolean) => Promise<string | null>;
+
+let tokenProvider: AuthTokenProvider | null = null;
+let onAuthExpired: (() => void) | null = null;
+
+// a fixed token, used only when there's no provider (tests)
 export function setAuthToken(token: string | null) {
   authToken = token;
+}
+
+export function setAuthTokenProvider(provider: AuthTokenProvider | null) {
+  tokenProvider = provider;
+}
+
+// called when a request is still rejected (401) after refreshing the token
+export function setOnAuthExpired(callback: (() => void) | null) {
+  onAuthExpired = callback;
+}
+
+async function currentToken(forceRefresh: boolean): Promise<string | null> {
+  return tokenProvider ? tokenProvider(forceRefresh) : authToken;
+}
+
+function authExpired() {
+  try {
+    onAuthExpired?.();
+  } catch {
+    // signing out is best effort; the request still fails with the 401
+  }
 }
 
 export async function apiRequest(
   path: string,
   options: RequestInit = {}
 ): Promise<any> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
+  const send = (token: string | null) => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(options.headers as Record<string, string>),
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    return fetch(`${BASE_URL}${path}`, { ...options, headers });
   };
 
-  if (authToken) {
-    headers["Authorization"] = `Bearer ${authToken}`;
-  }
+  let response = await send(await currentToken(false));
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  // the token may have expired (e.g. the app was asleep): refresh it once and retry
+  if (response.status === 401 && tokenProvider) {
+    let fresh: string | null = null;
+    try {
+      fresh = await currentToken(true);
+    } catch {
+      fresh = null;
+    }
+    if (fresh) {
+      response = await send(fresh);
+    }
+    if (response.status === 401) {
+      authExpired();
+    }
+  }
 
   if (!response.ok) {
     const body = await response.text();
