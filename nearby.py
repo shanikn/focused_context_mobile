@@ -32,7 +32,8 @@ CACHE_PRECISION = 3
 # store type -> Overpass tag selectors (any of them)
 STORE_SELECTORS = {
     "supermarket": ['"shop"~"^(supermarket|convenience)$"'],
-    "pharmacy": ['"amenity"="pharmacy"'],
+    # drugstores like Super-Pharm are shop=chemist
+    "pharmacy": ['"amenity"="pharmacy"', '"shop"="chemist"'],
     "post_office": ['"amenity"="post_office"'],
 }
 
@@ -41,6 +42,7 @@ _UNNAMED = {
     "supermarket": "Supermarket",
     "convenience": "Convenience store",
     "pharmacy": "Pharmacy",
+    "chemist": "Drugstore",
     "post_office": "Post office",
 }
 

@@ -216,3 +216,20 @@ def test_endpoint_requires_sign_in(monkeypatch, overpass):
 
 def test_nearby_does_not_clash_with_place_routes(overpass):
     assert isinstance(client.get("/places/").json(), list)
+
+
+def test_pharmacy_includes_drugstores(overpass):
+    # Super-Pharm and similar are tagged shop=chemist in OpenStreetMap
+    calls, state = overpass
+    state["body"] = {
+        "elements": [
+            {"type": "node", "id": 7, "lat": 32.1001, "lon": 34.8, "tags": {"shop": "chemist", "name": "Super-Pharm"}},
+            {"type": "node", "id": 8, "lat": 32.1002, "lon": 34.8, "tags": {"amenity": "pharmacy", "name": "Be"}},
+            {"type": "node", "id": 9, "lat": 32.1003, "lon": 34.8, "tags": {"shop": "chemist"}},
+        ]
+    }
+    stores = nearby.find("pharmacy", 32.1, 34.8, 2000)
+    query = _query(calls[0])
+    assert '"amenity"="pharmacy"' in query
+    assert '"shop"="chemist"' in query
+    assert [s["name"] for s in stores] == ["Super-Pharm", "Be", "Drugstore"]
