@@ -19,9 +19,11 @@ import { useAuth } from "../context/AuthContext";
 import {
   getNotificationsEnabled,
   getReminderLocation,
+  getStoreAlertMode,
   getStoreAlertsEnabled,
   setNotificationsEnabled,
   setReminderLocation,
+  setStoreAlertMode,
   setStoreAlertsEnabled,
 } from "../lib/reminderPrefs";
 import { syncStoreAlerts } from "../services/storeAlerts";
@@ -84,6 +86,7 @@ export default function SettingsScreen() {
   const { user } = useAuth();
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
   const [storeAlertsEnabled, setStoreAlertsEnabledState] = useState(true);
+  const [storeAlertMode, setStoreAlertModeState] = useState<"stop" | "pass">("stop");
   const [location, setLocation] = useState<string>(UNKNOWN);
   const [checkingNow, setCheckingNow] = useState(false);
   const [places, setPlaces] = useState<UserPlace[]>([]);
@@ -115,6 +118,7 @@ export default function SettingsScreen() {
     useCallback(() => {
       getNotificationsEnabled().then(setNotificationsEnabledState).catch(() => {});
       getStoreAlertsEnabled().then(setStoreAlertsEnabledState).catch(() => {});
+      getStoreAlertMode().then(setStoreAlertModeState).catch(() => {});
       refreshPlaces().catch(() => {});
       getCategoryColors().then(setCategoryColors).catch(() => {});
       // read-only: never prompts
@@ -373,6 +377,11 @@ export default function SettingsScreen() {
     await syncStoreAlerts();
   };
 
+  const handleStoreAlertMode = async (mode: "stop" | "pass") => {
+    setStoreAlertModeState(mode);
+    await setStoreAlertMode(mode);
+  };
+
   const handleToggleStoreAlerts = async (value: boolean) => {
     setStoreAlertsEnabledState(value);
     await setStoreAlertsEnabled(value);
@@ -620,6 +629,22 @@ export default function SettingsScreen() {
             value={storeAlertsEnabled}
             onValueChange={handleToggleStoreAlerts}
           />
+          {storeAlertsEnabled && (
+            <ChipRow style={styles.chips}>
+              <Chip
+                label="Alert when I stop there"
+                icon="hourglass-outline"
+                selected={storeAlertMode === "stop"}
+                onPress={() => handleStoreAlertMode("stop")}
+              />
+              <Chip
+                label="Alert when passing by"
+                icon="walk-outline"
+                selected={storeAlertMode === "pass"}
+                onPress={() => handleStoreAlertMode("pass")}
+              />
+            </ChipRow>
+          )}
           <TouchableOpacity
             style={[styles.checkRow, checkingNow && styles.dimmed]}
             onPress={handleCheckNow}

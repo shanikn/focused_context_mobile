@@ -175,6 +175,26 @@ export function combineRegions(
   return [...placeRegions, refresh, ...stores.slice(0, room)];
 }
 
+// ---- stopping there (dwell) ----
+
+// "Alert when I stop there" (default) or "Alert when passing by"
+export type StoreAlertMode = "stop" | "pass";
+
+// Geofences only report enter and exit, so on enter the alert is scheduled
+// for DWELL_MS later and cancelled if you leave first (an exit event, or a
+// fix taken when the time is up that's more than DWELL_RADIUS_M away).
+export const DWELL_MS = 2 * 60 * 1000;
+export const DWELL_RADIUS_M = 60;
+const DWELL_ACCURACY_SLACK_M = 40; // a rough fix can't stretch "still there" further than this
+
+export function isStillThere(
+  store: { lat: number; lon: number },
+  fix: LatLon & { accuracy?: number | null }
+): boolean {
+  const slack = Math.min(fix.accuracy ?? 0, DWELL_ACCURACY_SLACK_M);
+  return distanceMeters(fix, { latitude: store.lat, longitude: store.lon }) <= DWELL_RADIUS_M + slack;
+}
+
 // ---- once per visit ----
 
 export interface StoreVisit {
@@ -207,6 +227,13 @@ export function recordStoreEnter(visits: StoreVisits, regionId: string, now: num
   if (notified) {
     next[regionId] = { notifiedAt: now, exitedAt: null };
   }
+  return next;
+}
+
+// an alert that was cancelled (you walked on) doesn't count as this visit's
+export function forgetStoreVisit(visits: StoreVisits, regionId: string): StoreVisits {
+  const next = { ...visits };
+  delete next[regionId];
   return next;
 }
 

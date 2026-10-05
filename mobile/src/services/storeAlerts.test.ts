@@ -3,8 +3,8 @@ import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import { getNotes } from "../api/notes";
 import { nearbyStores } from "../api/places";
-import { setNotificationsEnabled, setStoreAlertsEnabled } from "../lib/reminderPrefs";
-import { REFRESH_REGION_ID } from "../lib/storeAlerts";
+import { setNotificationsEnabled, setStoreAlertMode, setStoreAlertsEnabled } from "../lib/reminderPrefs";
+import { DWELL_MS, REFRESH_REGION_ID } from "../lib/storeAlerts";
 import { getGrantedPermissions } from "./locationPermissions";
 import { syncGeofencing } from "./geofence";
 import { getStoreRegions, handleStoreGeofenceEvent, syncStoreAlerts } from "./storeAlerts";
@@ -15,7 +15,11 @@ jest.mock("expo-location", () => ({
   getCurrentPositionAsync: jest.fn(),
   Accuracy: { Balanced: 3 },
 }));
-jest.mock("expo-notifications", () => ({ scheduleNotificationAsync: jest.fn().mockResolvedValue("id") }));
+jest.mock("expo-notifications", () => ({
+  scheduleNotificationAsync: jest.fn(async (request: { identifier?: string }) => request.identifier ?? "id"),
+  cancelScheduledNotificationAsync: jest.fn().mockResolvedValue(undefined),
+  SchedulableTriggerInputTypes: { DATE: "date" },
+}));
 jest.mock("../api/notes", () => ({ getNotes: jest.fn() }));
 jest.mock("../api/places", () => ({ nearbyStores: jest.fn() }));
 jest.mock("./locationPermissions", () => ({ getGrantedPermissions: jest.fn() }));
@@ -154,8 +158,9 @@ describe("syncStoreAlerts", () => {
   });
 });
 
-describe("arriving at a store", () => {
+describe("arriving at a store (Alert when passing by)", () => {
   beforeEach(async () => {
+    await setStoreAlertMode("pass");
     await syncStoreAlerts();
   });
 
@@ -212,5 +217,87 @@ describe("arriving at a store", () => {
     await handleStoreGeofenceEvent("exit", REFRESH_REGION_ID);
     expect(mockedNearby).toHaveBeenCalledWith("supermarket", moved.latitude, moved.longitude, 2000);
     expect((await getStoreRegions()).refresh).toMatchObject({ latitude: moved.latitude });
+  });
+});
+
+describe("Alert when I stop there (the default)", () => {
+  const cancel = Notifications.cancelScheduledNotificationAsync as jest.Mock;
+  const STORE = "store:supermarket:node/1"; // Shufersal, ~11 m from HERE
+  let wait: jest.Mock;
+
+  beforeEach(async () => {
+    wait = jest.fn(async () => {});
+    await syncStoreAlerts();
+  });
+
+  const slow = () => {
+    let finish!: () => void;
+    const fn = jest.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    return { fn, finish: () => finish() };
+  };
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  test("on enter: the alert is set for 2 minutes later, not shown right away", async () => {
+    await handleStoreGeofenceEvent("enter", STORE, { wait });
+    expect(notify).toHaveBeenCalledTimes(1);
+    const request = notify.mock.calls[0][0];
+    expect(request.content.body).toBe("You're at Shufersal – you have errands: buy milk, get carrots");
+    expect(request.trigger.type).toBe("date");
+    const delay = request.trigger.date.getTime() - Date.now();
+    expect(delay).toBeGreaterThan(DWELL_MS - 5000);
+    expect(delay).toBeLessThanOrEqual(DWELL_MS);
+    expect(wait).toHaveBeenCalledWith(DWELL_MS);
+  });
+
+  test("still within ~60 m after 2 minutes: the alert stays", async () => {
+    (Location.getCurrentPositionAsync as jest.Mock).mockResolvedValue(position(HERE));
+    await handleStoreGeofenceEvent("enter", STORE, { wait });
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  test("walked on (150 m away after 2 minutes): cancelled, and the next real visit can alert", async () => {
+    (Location.getCurrentPositionAsync as jest.Mock).mockResolvedValue(position({ latitude: 32.1015, longitude: 34.8 }));
+    await handleStoreGeofenceEvent("enter", STORE, { wait });
+    expect(cancel).toHaveBeenCalledWith(notify.mock.calls[0][0].identifier);
+    (Location.getCurrentPositionAsync as jest.Mock).mockResolvedValue(position(HERE));
+    await handleStoreGeofenceEvent("enter", STORE, { wait });
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  test("left the store before 2 minutes: cancelled", async () => {
+    const waiting = slow();
+    const entering = handleStoreGeofenceEvent("enter", STORE, { wait: waiting.fn });
+    await tick();
+    await handleStoreGeofenceEvent("exit", STORE);
+    expect(cancel).toHaveBeenCalledWith(notify.mock.calls[0][0].identifier);
+    waiting.finish();
+    await entering;
+    expect(Location.getCurrentPositionAsync).not.toHaveBeenCalled(); // nothing left to check
+  });
+
+  test("leaving after the alert was shown doesn't cancel anything", async () => {
+    await handleStoreGeofenceEvent("enter", STORE, { wait });
+    const realNow = Date.now();
+    const spy = jest.spyOn(Date, "now").mockReturnValue(realNow + DWELL_MS + 1000);
+    await handleStoreGeofenceEvent("exit", STORE);
+    spy.mockRestore();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  test("no fix at the check: the alert stays (Android's exit event still cancels it)", async () => {
+    (Location.getCurrentPositionAsync as jest.Mock).mockRejectedValue(new Error("no fix"));
+    await handleStoreGeofenceEvent("enter", STORE, { wait });
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  test("Android repeating ENTER while waiting doesn't set a second alert", async () => {
+    const waiting = slow();
+    const entering = handleStoreGeofenceEvent("enter", STORE, { wait: waiting.fn });
+    await tick();
+    await handleStoreGeofenceEvent("enter", STORE, { wait });
+    expect(notify).toHaveBeenCalledTimes(1);
+    waiting.finish();
+    await entering;
   });
 });

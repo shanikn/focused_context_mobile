@@ -253,3 +253,29 @@ test("the message lists the errands for that store", () => {
   const long = note("x".repeat(80));
   expect(storeAlertMessage("S", [long]).body.length).toBeLessThan(90);
 });
+
+describe("stopping at a store (dwell)", () => {
+  const { DWELL_MS, DWELL_RADIUS_M, forgetStoreVisit, isStillThere } = require("./storeAlerts");
+  const store = { lat: 32.1, lon: 34.8 };
+  // ~111 m per 0.001 degrees of latitude
+  const fixAt = (dLat: number, accuracy: number | null = 10) => ({ latitude: 32.1 + dLat, longitude: 34.8, accuracy });
+
+  test("about 2 minutes within about 60 m", () => {
+    expect(DWELL_MS).toBe(2 * 60_000);
+    expect(DWELL_RADIUS_M).toBe(60);
+  });
+
+  test("still there: within 60 m, with some room for the fix's accuracy (at most 40 m)", () => {
+    expect(isStillThere(store, fixAt(0))).toBe(true);
+    expect(isStillThere(store, fixAt(0.0005))).toBe(true); // ~55 m
+    expect(isStillThere(store, fixAt(0.0008, 35))).toBe(true); // ~90 m, give or take 35
+    expect(isStillThere(store, fixAt(0.0008, 10))).toBe(false);
+    expect(isStillThere(store, fixAt(0.0015, 300))).toBe(false); // ~165 m: a rough fix doesn't stretch past 100 m
+  });
+
+  test("a cancelled alert doesn't use up the visit", () => {
+    const visits = recordStoreEnter({}, "store:supermarket:node/1", NOW, true);
+    const after = forgetStoreVisit(visits, "store:supermarket:node/1");
+    expect(shouldNotifyStore(after["store:supermarket:node/1"], NOW + MIN)).toBe(true);
+  });
+});

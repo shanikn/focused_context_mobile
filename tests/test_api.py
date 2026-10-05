@@ -252,7 +252,21 @@ def test_list_notes_reports_reminder_time_source():
     assert by_id[default]["reminder_time_source"] == "default"
 
 
-def test_reminders_report_reminder_time_source():
+class _NoonToday(datetime):
+    """datetime whose now() is 12:00 today, so a note "at 17:54" is always
+    later today, whatever time the tests run."""
+
+    @classmethod
+    def now(cls, tz=None):
+        real = datetime.now(tz)
+        return real.replace(hour=12, minute=0, second=0, microsecond=0)
+
+
+def test_reminders_report_reminder_time_source(monkeypatch):
+    import agents.pipeline
+    import agents.relevance
+    monkeypatch.setattr(agents.pipeline, "datetime", _NoonToday)
+    monkeypatch.setattr(agents.relevance, "datetime", _NoonToday)
     # its own place, so only these notes can match it (results are capped at 3)
     place = client.post("/places/", json={"name": "Laundromat"}).json()
     timed = client.post("/notes/", json={"content": "laundromat at 17:54"}).json()["id"]

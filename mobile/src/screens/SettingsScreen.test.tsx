@@ -27,6 +27,8 @@ jest.mock("../lib/reminderPrefs", () => ({
   setReminderLocation: jest.fn().mockResolvedValue(undefined),
   getStoreAlertsEnabled: jest.fn().mockResolvedValue(true),
   setStoreAlertsEnabled: jest.fn().mockResolvedValue(undefined),
+  getStoreAlertMode: jest.fn().mockResolvedValue("stop"),
+  setStoreAlertMode: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("../services/reminderNotifier", () => ({
   checkAndNotifyReminders: jest.fn().mockResolvedValue({
@@ -436,4 +438,22 @@ describe("current location: fast, and Where you are now follows place changes", 
     await act(async () => byLabel(tree, "Home radius 200 m").props.onPress());
     expect(selected(tree, "Not at a place")).toBe(true);
   });
+});
+
+test("store alerts: 'Alert when I stop there' by default, or 'Alert when passing by'", async () => {
+  const { setStoreAlertMode } = jest.requireMock("../lib/reminderPrefs");
+  const tree = await renderScreen();
+  expect(byLabel(tree, "Alert when I stop there").props.accessibilityState.selected).toBe(true);
+  expect(byLabel(tree, "Alert when passing by").props.accessibilityState.selected).toBe(false);
+  await act(async () => byLabel(tree, "Alert when passing by").props.onPress());
+  expect(setStoreAlertMode).toHaveBeenCalledWith("pass");
+  expect(byLabel(tree, "Alert when passing by").props.accessibilityState.selected).toBe(true);
+});
+
+test("the store alert choice is hidden while store alerts are off", async () => {
+  const { getStoreAlertsEnabled } = jest.requireMock("../lib/reminderPrefs");
+  (getStoreAlertsEnabled as jest.Mock).mockResolvedValueOnce(false);
+  const tree = await renderScreen();
+  const labels = tree.root.findAllByType(TouchableOpacity).map((t) => t.props.accessibilityLabel);
+  expect(labels).not.toContain("Alert when passing by");
 });

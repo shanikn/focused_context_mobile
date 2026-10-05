@@ -5,6 +5,7 @@ const KEYS = {
   enabled: "focusedcontext.reminder.enabled",
   notifiedSlots: "focusedcontext.reminder.notifiedSlots",
   storeAlerts: "smartmind.storeAlerts.enabled",
+  storeAlertMode: "smartmind.storeAlerts.mode",
 };
 
 type NotifiedSlots = Record<string, string>;
@@ -50,6 +51,16 @@ export async function getStoreAlertsEnabled(): Promise<boolean> {
 
 export async function setStoreAlertsEnabled(enabled: boolean): Promise<void> {
   await AsyncStorage.setItem(KEYS.storeAlerts, enabled ? "true" : "false");
+}
+
+// "stop": alert after staying ~2 minutes at the store (default);
+// "pass": alert as soon as you're near it
+export async function getStoreAlertMode(): Promise<"stop" | "pass"> {
+  return (await AsyncStorage.getItem(KEYS.storeAlertMode)) === "pass" ? "pass" : "stop";
+}
+
+export async function setStoreAlertMode(mode: "stop" | "pass"): Promise<void> {
+  await AsyncStorage.setItem(KEYS.storeAlertMode, mode);
 }
 
 export async function wasNotifiedInSlot(noteId: string, slot: string): Promise<boolean> {
