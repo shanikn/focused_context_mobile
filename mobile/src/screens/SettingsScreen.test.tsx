@@ -24,6 +24,8 @@ jest.mock("../lib/reminderPrefs", () => ({
   setNotificationsEnabled: jest.fn().mockResolvedValue(undefined),
   getReminderLocation: jest.fn().mockResolvedValue("id-home"),
   setReminderLocation: jest.fn().mockResolvedValue(undefined),
+  getStoreAlertsEnabled: jest.fn().mockResolvedValue(true),
+  setStoreAlertsEnabled: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("../services/reminderNotifier", () => ({
   checkAndNotifyReminders: jest.fn().mockResolvedValue({
@@ -46,6 +48,7 @@ jest.mock("../services/locationPermissions", () => ({
   getGrantedPermissions: jest.fn().mockResolvedValue({ foreground: true, background: true, notifications: true }),
 }));
 jest.mock("../services/geofence", () => ({ syncGeofencing: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("../services/storeAlerts", () => ({ syncStoreAlerts: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../services/scheduledReminders", () => ({
   clearReminderSchedule: jest.fn().mockResolvedValue(undefined),
   syncScheduledReminders: jest.fn().mockResolvedValue(undefined),
@@ -274,4 +277,17 @@ describe("Remove place and Where you are now", () => {
     expect((await getAllCoords())["id-gym"]).toBeDefined();
     expect(byLabel(tree, "Remove place Gym")).toBeTruthy();
   });
+});
+
+test("Store alerts for errands: on by default; turning it off saves and re-syncs", async () => {
+  const { setStoreAlertsEnabled } = jest.requireMock("../lib/reminderPrefs");
+  const { syncStoreAlerts } = jest.requireMock("../services/storeAlerts");
+  const tree = await renderScreen();
+  const toggle = () =>
+    tree.root.findAllByType(Switch).find((s) => s.props.accessibilityLabel === "Errand alerts near stores")!;
+  expect(toggle().props.value).toBe(true);
+  await act(async () => toggle().props.onValueChange(false));
+  expect(setStoreAlertsEnabled).toHaveBeenCalledWith(false);
+  expect(syncStoreAlerts).toHaveBeenCalled();
+  expect(toggle().props.value).toBe(false);
 });

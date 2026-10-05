@@ -63,6 +63,7 @@ jest.mock("../lib/listPrefs", () => ({
   removeCustomList: jest.fn(),
 }));
 jest.mock("../services/scheduledReminders", () => ({ syncScheduledReminders: jest.fn() }));
+jest.mock("../services/storeAlerts", () => ({ syncStoreAlerts: jest.fn() }));
 jest.mock("../services/placesStore", () => ({ loadPlaces: jest.fn().mockResolvedValue([]) }));
 jest.mock("../lib/reminderPrefs", () => ({ getReminderLocation: jest.fn().mockResolvedValue("unknown") }));
 // the card's swipe needs native gesture handling; show just the text

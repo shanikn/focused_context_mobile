@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from agents.ingestion import ingest_note
 from agents.categorizer import (
     categorize, infer_place, infer_time,
-    infer_date, default_time_for, DATE_ONLY_TIME,
+    infer_date, default_time_for, DATE_ONLY_TIME, infer_store_type,
 )
 from agents.relevance import get_relevant_notes, collection
 from agents.ranking_policy import apply_feedback
@@ -14,6 +14,13 @@ from typing import Optional
 from places import get_places
 
 logger = logging.getLogger(__name__)
+
+
+def store_type(note: Note) -> Optional[str]:
+    """For an errand, the kind of store it needs (supermarket, pharmacy,
+    post_office), so the phone can alert near any such store. None otherwise.
+    Computed when listing, like reminder_time_source, so it's never stale."""
+    return infer_store_type(note.content) if note.category == "errand" else None
 
 
 def reminder_time_source(note: Note) -> Optional[str]:

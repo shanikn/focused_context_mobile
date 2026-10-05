@@ -24,6 +24,7 @@ import { getNotesView, NotesView, notesViewSections, setNotesView } from "../lib
 import { currentPlaceLabel } from "../lib/noteCardInfo";
 import { getReminderLocation } from "../lib/reminderPrefs";
 import { syncScheduledReminders } from "../services/scheduledReminders";
+import { syncStoreAlerts } from "../services/storeAlerts";
 import { loadPlaces } from "../services/placesStore";
 import { ServerPlace } from "../lib/userPlaces";
 import {
@@ -153,6 +154,7 @@ export default function NotesListScreen() {
       await deleteNote(noteId);
       setNotes((prev) => prev.filter((n) => n._id !== noteId));
       syncScheduledReminders();
+      syncStoreAlerts();
     } catch {
       Alert.alert("Error", "Failed to delete note");
     }
@@ -171,6 +173,7 @@ export default function NotesListScreen() {
             await Promise.all(listNotes.map((n) => deleteNote(n._id)));
             setNotes((prev) => prev.filter((n) => n.list_name !== name));
             syncScheduledReminders();
+            syncStoreAlerts();
             if (listNotes.length === 0) {
               const nextLists = await removeCustomList(name);
               setCustomLists(nextLists);

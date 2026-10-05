@@ -25,6 +25,17 @@ export async function updatePlace(
   });
 }
 
+// stores of a type around a position, nearest first (OpenStreetMap via the backend)
+export async function nearbyStores(
+  type: string,
+  lat: number,
+  lon: number,
+  radiusM: number = 2000
+): Promise<{ id: string; name: string; lat: number; lon: number }[]> {
+  const params = new URLSearchParams({ lat: String(lat), lon: String(lon), type, radius_m: String(radiusM) });
+  return apiRequest(`/places/nearby?${params.toString()}`);
+}
+
 export async function deletePlace(id: string): Promise<{ message: string }> {
   return apiRequest(`/places/${id}`, { method: "DELETE" });
 }

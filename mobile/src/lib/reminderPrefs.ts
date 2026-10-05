@@ -4,6 +4,7 @@ const KEYS = {
   location: "focusedcontext.reminder.location",
   enabled: "focusedcontext.reminder.enabled",
   notifiedSlots: "focusedcontext.reminder.notifiedSlots",
+  storeAlerts: "smartmind.storeAlerts.enabled",
 };
 
 type NotifiedSlots = Record<string, string>;
@@ -40,6 +41,15 @@ export async function getNotificationsEnabled(): Promise<boolean> {
 
 export async function setNotificationsEnabled(enabled: boolean): Promise<void> {
   await AsyncStorage.setItem(KEYS.enabled, enabled ? "true" : "false");
+}
+
+// errand alerts near supermarkets, pharmacies and post offices (on by default)
+export async function getStoreAlertsEnabled(): Promise<boolean> {
+  return (await AsyncStorage.getItem(KEYS.storeAlerts)) !== "false";
+}
+
+export async function setStoreAlertsEnabled(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEYS.storeAlerts, enabled ? "true" : "false");
 }
 
 export async function wasNotifiedInSlot(noteId: string, slot: string): Promise<boolean> {

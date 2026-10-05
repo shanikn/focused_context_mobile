@@ -30,12 +30,36 @@ errand = [
     "go", "pick up", "buy", "errand",
     "shopping", "shopping list", "walk", "take",
     "grocery", "groceries", "supermarket", "store",
+    "pharmacy", "prescription", "post office", "parcel",
 ]
 # "get carrots" is an errand, but "get to the exam", "get up early" or
 # "get ready" are not: get/grab count only when an item follows
 weak_errand = re.compile(
     r"\b(get|grab)\s+(?!(to|up|ready|back|home|out|there|in|on|off|started|better)\b)\w"
 )
+
+# Which kind of store an errand needs, for alerts near any such store.
+# Checked in order; anything else (food, groceries...) is the supermarket.
+STORE_TYPES = ("supermarket", "pharmacy", "post_office")
+store_type_words = {
+    "pharmacy": [
+        "pharmacy", "medicine", "medicines", "meds", "pill", "pills", "vitamin", "vitamins",
+        "prescription", "painkiller", "painkillers", "aspirin", "ibuprofen", "advil", "bandages",
+    ],
+    "post_office": [
+        "post office", "package", "packages", "parcel", "parcels", "mail", "stamps",
+    ],
+}
+
+
+def infer_store_type(content: str) -> str:
+    """The store type an errand needs: one of STORE_TYPES."""
+    lower = content.lower()
+    for kind, words in store_type_words.items():
+        if any(_has_word(lower, w) for w in words):
+            return kind
+    return "supermarket"
+
 
 home_keywords = [
     "home", "house", "laundry", "dishes",

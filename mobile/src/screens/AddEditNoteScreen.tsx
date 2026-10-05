@@ -18,6 +18,7 @@ import { NotesStackParamList } from "../../App";
 import { getCustomLists } from "../lib/listPrefs";
 import { folderNames, GENERAL } from "../lib/folderOrder";
 import { syncScheduledReminders } from "../services/scheduledReminders";
+import { syncStoreAlerts } from "../services/storeAlerts";
 import { loadPlaces } from "../services/placesStore";
 import { ServerPlace } from "../lib/userPlaces";
 import { CATEGORIES, categoryLabel, normalizeCategory } from "../lib/categoryColors";
@@ -197,6 +198,7 @@ export default function AddEditNoteScreen() {
       // reschedule exact alarms with the new time/date; not awaited so
       // the screen closes right away
       syncScheduledReminders();
+      syncStoreAlerts();
       navigation.goBack();
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to save note");

@@ -23,6 +23,7 @@ jest.mock("../api/notes", () => ({
 }));
 jest.mock("../lib/listPrefs", () => ({ getCustomLists: jest.fn().mockResolvedValue(["Work"]) }));
 jest.mock("../services/scheduledReminders", () => ({ syncScheduledReminders: jest.fn() }));
+jest.mock("../services/storeAlerts", () => ({ syncStoreAlerts: jest.fn() }));
 jest.mock("../services/placesStore", () => ({
   loadPlaces: jest.fn().mockResolvedValue([
     { id: "id-home", name: "Home", keywords: [], kind: "home" },

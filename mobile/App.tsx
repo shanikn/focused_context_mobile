@@ -22,6 +22,7 @@ import SettingsScreen from "./src/screens/SettingsScreen";
 import { checkAndNotifyReminders } from "./src/services/reminderNotifier";
 import { syncGeofencing } from "./src/services/geofence";
 import { syncScheduledReminders } from "./src/services/scheduledReminders";
+import { syncStoreAlerts } from "./src/services/storeAlerts";
 import { Note } from "./src/types/notes";
 import { fonts } from "./src/theme";
 import { ThemeProvider, useTheme } from "./src/ThemeContext";
@@ -143,6 +144,7 @@ function RootNavigator() {
     // revoked in system settings while the app was in the background
     syncGeofencing();
     syncScheduledReminders();
+    syncStoreAlerts();
 
     const interval = setInterval(runReminderCheck, REMINDER_POLL_MS);
     const appStateSubscription = AppState.addEventListener("change", (state) => {
@@ -150,6 +152,7 @@ function RootNavigator() {
         runReminderCheck();
         syncGeofencing();
         syncScheduledReminders();
+        syncStoreAlerts();
       }
     });
 

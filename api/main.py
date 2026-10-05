@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from pydantic import BaseModel  # noqa: E402
-from fastapi import FastAPI, Header, HTTPException  # noqa: E402
+from fastapi import FastAPI, Header, HTTPException, Query  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from notepad import (  # noqa: E402
     Note, get_all_notes, update_note, note_to_dict, save_note,
@@ -14,7 +14,7 @@ from notepad import (  # noqa: E402
 )
 from agents.pipeline import (  # noqa: E402
     enrich_note, full_delete, process_feedback,
-    get_reminders, process_all_notes, reminder_time_source,
+    get_reminders, process_all_notes, reminder_time_source, store_type,
     reenrich_user_notes, untag_place,
 )
 from places import (  # noqa: E402
@@ -23,6 +23,7 @@ from places import (  # noqa: E402
 )
 from auth import get_user_id  # noqa: E402
 import geocode  # noqa: E402
+import nearby  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -123,7 +124,7 @@ def list_notes(authorization: Optional[str] = Header(None)):
     # tells the phone which times get an exact alarm (explicit/text) and
     # which are location defaults left to the location-aware polling
     return [
-        {**note_to_dict(n), "reminder_time_source": reminder_time_source(n)}
+        {**note_to_dict(n), "reminder_time_source": reminder_time_source(n), "store_type": store_type(n)}
         for n in notes
     ]
 
@@ -229,7 +230,7 @@ def get_reminders_endpoint(
     notes = get_reminders(query, location, hour, minute, user_id)
     # the phone uses the source to keep timed notes out of arrival alerts
     return [
-        {**note_to_dict(n), "reminder_time_source": reminder_time_source(n)}
+        {**note_to_dict(n), "reminder_time_source": reminder_time_source(n), "store_type": store_type(n)}
         for n in notes
     ]
 
@@ -252,6 +253,34 @@ def search_places(q: str, authorization: Optional[str] = Header(None)):
         logging.warning("Geocode failed: %s", e)
         raise HTTPException(
             status_code=_GEOCODE_STATUS.get(e.kind, 502),
+            detail={"kind": e.kind, "upstream_status": e.status},
+        )
+
+
+# ---- nearby stores: the phone asks us, we ask OpenStreetMap Overpass ----
+
+_NEARBY_STATUS = {"rate_limited": 429, "timeout": 504, "network": 504}
+
+
+@app.get("/places/nearby")
+def nearby_stores(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    type: str = "supermarket",
+    radius_m: int = Query(2000, ge=100, le=5000),
+    authorization: Optional[str] = Header(None),
+):
+    """Up to 20 stores of this type ({id, name, lat, lon}, nearest first)
+    around the phone, for errand alerts. Nothing is stored."""
+    require_user_id(authorization)
+    if type not in nearby.STORE_SELECTORS:
+        raise HTTPException(status_code=422, detail=f"type must be one of {sorted(nearby.STORE_SELECTORS)}")
+    try:
+        return nearby.find(type, lat, lon, radius_m)
+    except nearby.NearbyError as e:
+        logging.warning("Nearby stores failed: %s", e)
+        raise HTTPException(
+            status_code=_NEARBY_STATUS.get(e.kind, 502),
             detail={"kind": e.kind, "upstream_status": e.status},
         )
 

@@ -27,4 +27,7 @@ export interface Note {
     // from GET /notes/: where the reminder time comes from; only explicit and
     // text times get an exact alarm. Missing on an older backend.
     reminder_time_source?: "explicit" | "text" | "default" | null;
+    // from GET /notes/: for an errand, which kind of store it needs
+    // ("supermarket" | "pharmacy" | "post_office"). Missing on an older backend.
+    store_type?: string | null;
 }

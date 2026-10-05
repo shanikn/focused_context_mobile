@@ -4,6 +4,7 @@ import * as TaskManager from "expo-task-manager";
 
 import { auth } from "../config/firebase";
 import { connectApiToFirebase } from "./apiAuth";
+import { combineRegions, isStoreRegionId } from "../lib/storeAlerts";
 import {
   GeofenceRegion,
   locationAfterGeofenceEvent,
@@ -21,6 +22,7 @@ import {
 } from "../lib/reminderPrefs";
 import { getGrantedPermissions } from "./locationPermissions";
 import { checkAndNotifyReminders } from "./reminderNotifier";
+import { getStoreRegions, handleStoreGeofenceEvent } from "./storeAlerts";
 
 export const GEOFENCE_TASK = "focusedcontext-geofence";
 
@@ -67,12 +69,19 @@ TaskManager.defineTask<{
   }
   try {
     const event = data.eventType === Location.GeofencingEventType.Enter ? "enter" : "exit";
+    const regionId = data.region.identifier ?? "";
+    // a store near an errand, or the 1 km fence that refreshes the stores
+    if (isStoreRegionId(regionId)) {
+      await ensureAuthToken();
+      await handleStoreGeofenceEvent(event, regionId);
+      return;
+    }
     const current = await getReminderLocation();
     // regions are only registered for places with coordinates on this phone
     const knownPlaceIds = new Set(Object.keys(await getAllCoords()));
     const { location, arrived } = locationAfterGeofenceEvent(
       event,
-      data.region.identifier ?? "",
+      regionId,
       current,
       knownPlaceIds
     );
@@ -91,17 +100,20 @@ TaskManager.defineTask<{
   }
 });
 
-// Start geofencing for the saved places when automatic location and
-// notifications are on; otherwise stop it. Call whenever places, location
-// permissions or the notifications switch change. Never prompts.
+// Start geofencing for the saved places (and the stores near open errands,
+// see storeAlerts.ts) when automatic location and notifications are on;
+// otherwise stop it. Call whenever places, location permissions or the
+// notifications switch change. Never prompts.
 export async function syncGeofencing(): Promise<void> {
   try {
-    const [permissions, notificationsEnabled, places] = await Promise.all([
+    const [permissions, notificationsEnabled, places, storeFences] = await Promise.all([
       getGrantedPermissions(),
       getNotificationsEnabled(),
       loadPlaces(),
+      getStoreRegions(),
     ]);
-    const regions = regionsFromPlaces(places);
+    // saved places first; stores get what's left, well under Android's 100
+    const regions = combineRegions(regionsFromPlaces(places), storeFences.stores, storeFences.refresh);
     const active = shouldGeofence({
       foreground: permissions.foreground,
       background: permissions.background,

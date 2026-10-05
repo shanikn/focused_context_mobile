@@ -19,9 +19,12 @@ import { useAuth } from "../context/AuthContext";
 import {
   getNotificationsEnabled,
   getReminderLocation,
+  getStoreAlertsEnabled,
   setNotificationsEnabled,
   setReminderLocation,
+  setStoreAlertsEnabled,
 } from "../lib/reminderPrefs";
+import { syncStoreAlerts } from "../services/storeAlerts";
 import { checkAndNotifyReminders, ensureNotificationPermissions } from "../services/reminderNotifier";
 import {
   removePlaceCoords,
@@ -73,6 +76,7 @@ export default function SettingsScreen() {
   const styles = useThemedStyles(makeStyles);
   const { user } = useAuth();
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
+  const [storeAlertsEnabled, setStoreAlertsEnabledState] = useState(true);
   const [location, setLocation] = useState<string>(UNKNOWN);
   const [checkingNow, setCheckingNow] = useState(false);
   const [places, setPlaces] = useState<UserPlace[]>([]);
@@ -102,6 +106,7 @@ export default function SettingsScreen() {
   useFocusEffect(
     useCallback(() => {
       getNotificationsEnabled().then(setNotificationsEnabledState).catch(() => {});
+      getStoreAlertsEnabled().then(setStoreAlertsEnabledState).catch(() => {});
       refreshPlaces().catch(() => {});
       getCategoryColors().then(setCategoryColors).catch(() => {});
       // read-only: never prompts
@@ -310,6 +315,14 @@ export default function SettingsScreen() {
     // turning notifications off stops geofencing and exact alarms; on restarts them
     await syncGeofencing();
     await syncScheduledReminders();
+    await syncStoreAlerts();
+  };
+
+  const handleToggleStoreAlerts = async (value: boolean) => {
+    setStoreAlertsEnabledState(value);
+    await setStoreAlertsEnabled(value);
+    // registers or removes the store geofences
+    await syncStoreAlerts();
   };
 
   const handleSaveCategoryColor = async (hex: string) => {
@@ -538,6 +551,12 @@ export default function SettingsScreen() {
             caption="Show reminders on this phone."
             value={notificationsEnabled}
             onValueChange={handleToggleNotifications}
+          />
+          <ToggleRow
+            title="Errand alerts near stores"
+            caption="When you have errands and walk into any supermarket, pharmacy or post office nearby."
+            value={storeAlertsEnabled}
+            onValueChange={handleToggleStoreAlerts}
           />
           <TouchableOpacity
             style={[styles.checkRow, checkingNow && styles.dimmed]}
