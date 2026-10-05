@@ -6,22 +6,30 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-# for UI
-task = ["to do", "task"]
+# A note's kind. Time and place are separate fields, so a date or a time
+# alone never decides the kind.
+#   todo   - something to do (the default)
+#   errand - needs you to go somewhere (buy/get/grab + an item, shopping)
+#   idea   - something to keep; never alerts
+#   event  - an appointment, meeting, exam...
+KINDS = ("todo", "errand", "idea", "event")
+
+idea_words = ["idea", "ideas", "what if", "brainstorm", "random thought", "someday"]
+event_words = [
+    "appointment", "meeting", "exam", "exams", "quiz", "midterm", "dentist", "doctor",
+    "interview", "lecture", "class", "seminar", "conference", "webinar", "party",
+    "wedding", "birthday", "concert", "flight", "reservation", "checkup", "check-up",
+]
 errand = [
     "go", "pick up", "buy", "errand",
     "shopping", "shopping list", "walk", "take",
     "grocery", "groceries", "supermarket", "store",
 ]
-# "get carrots" is an errand, but "get to the exam on the 9th" is not:
-# these count only when the note names no day or time
-weak_errand = ["get", "grab"]
-idea = ["idea", "random"]
-reminder = ["remind", "forget", "remember"]
-scheduled = [
-    "schedule", "at", "time", "date", "calendar",
-    "appointment", "breakfast", "lunch", "dinner",
-]
+# "get carrots" is an errand, but "get to the exam", "get up early" or
+# "get ready" are not: get/grab count only when an item follows
+weak_errand = re.compile(
+    r"\b(get|grab)\s+(?!(to|up|ready|back|home|out|there|in|on|off|started|better)\b)\w"
+)
 
 home_keywords = [
     "home", "house", "laundry", "dishes",
@@ -43,39 +51,18 @@ def _has_word(content, keyword):
     return bool(re.search(r'\b' + re.escape(keyword) + r'\b', content))
 
 
-def categorize(content: str):
+def categorize(content: str) -> str:
+    """One of KINDS. Order: an explicit idea, then an event, then an errand;
+    everything else is a to-do."""
     lower = content.lower()
-    result = "uncategorized"
-    for x in reminder:
-        if _has_word(lower, x):
-            result = "reminder"
-            break
+    if any(_has_word(lower, w) for w in idea_words):
+        result = "idea"
+    elif any(_has_word(lower, w) for w in event_words):
+        result = "event"
+    elif any(_has_word(lower, w) for w in errand) or weak_errand.search(lower):
+        result = "errand"
     else:
-        for x in task:
-            if _has_word(lower, x):
-                result = "task"
-                break
-        else:
-            for x in scheduled:
-                if _has_word(lower, x):
-                    result = "scheduled"
-                    break
-            else:
-                for x in errand:
-                    if _has_word(lower, x):
-                        result = "errand"
-                        break
-                else:
-                    for x in idea:
-                        if _has_word(lower, x):
-                            result = "idea"
-                            break
-    # no keyword, but the note names a day or a time: it is scheduled
-    if result == "uncategorized":
-        if infer_date(content) or infer_time(content):
-            result = "scheduled"
-        elif any(_has_word(lower, x) for x in weak_errand):
-            result = "errand"
+        result = "todo"
     logger.debug("categorize(%s) -> %s", content[:30], result)
     return result
 

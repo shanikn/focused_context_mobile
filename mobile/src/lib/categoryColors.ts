@@ -1,19 +1,19 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Colors for note categories, chosen by the user and stored on this phone only.
+// Note kinds and their colors, chosen by the user and stored on this phone only.
 
-export const CATEGORIES = ["task", "errand", "idea", "reminder", "scheduled", "uncategorized"] as const;
+export const CATEGORIES = ["todo", "errand", "idea", "event"] as const;
 export type Category = (typeof CATEGORIES)[number];
 export type CategoryColors = Record<Category, string>;
 
 export const DEFAULT_CATEGORY_COLORS: CategoryColors = {
-  task: "#1976D2",
+  todo: "#1976D2",
   errand: "#388E3C",
   idea: "#7B1FA2",
-  reminder: "#F57C00",
-  scheduled: "#C2185B",
-  uncategorized: "#757575",
+  event: "#C2185B",
 };
+
+const LABELS: CategoryColors = { todo: "To-do", errand: "Errand", idea: "Idea", event: "Event" };
 
 // basic colors offered before the custom color wheel
 export const BASIC_SWATCHES = [
@@ -35,6 +35,15 @@ const STORAGE_KEY = "focusedcontext.categoryColors";
 
 function isCategory(value: string): value is Category {
   return (CATEGORIES as readonly string[]).includes(value);
+}
+
+// Old kinds (task, scheduled, reminder, uncategorized) and unknown values are To-dos.
+export function normalizeCategory(value: string | null | undefined): Category {
+  return value && isCategory(value) ? value : "todo";
+}
+
+export function categoryLabel(value: string | null | undefined): string {
+  return LABELS[normalizeCategory(value)];
 }
 
 // "#abc", "abc", "#aabbcc" -> "#AABBCC"; anything else -> null
@@ -86,6 +95,11 @@ async function readOverrides(): Promise<Partial<CategoryColors>> {
         result[key] = hex;
       }
     }
+    // a color picked for the old "Task" carries over to To-do
+    const oldTask = typeof parsed.task === "string" ? normalizeHex(parsed.task) : null;
+    if (!result.todo && oldTask) {
+      result.todo = oldTask;
+    }
     return result;
   } catch {
     return {};
@@ -113,5 +127,5 @@ export async function resetCategoryColor(category: Category): Promise<void> {
 }
 
 export function colorFor(category: string, colors: CategoryColors): string {
-  return isCategory(category) ? colors[category] : colors.uncategorized;
+  return colors[normalizeCategory(category)];
 }

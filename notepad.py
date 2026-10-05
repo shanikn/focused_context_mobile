@@ -28,7 +28,7 @@ class Note:
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
-    category: str = "uncategorized"
+    category: str = "todo"
     contexts: list = field(default_factory=list)
     list_name: str = "General"
     shown_count: int = 0

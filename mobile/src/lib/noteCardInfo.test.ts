@@ -12,7 +12,7 @@ function note(fields: Partial<Note>): Note {
   return {
     _id: "n1",
     content: "note",
-    category: "task",
+    category: "todo",
     contexts: [],
     list_name: "General",
     reminders_enabled: true,
@@ -25,23 +25,25 @@ function note(fields: Partial<Note>): Note {
 
 describe("icon tile", () => {
   test.each([
-    ["scheduled", "time-outline"],
-    ["reminder", "notifications-outline"],
+    ["todo", "checkbox-outline"],
     ["errand", "bag-outline"],
-    ["task", "checkbox-outline"],
     ["idea", "bulb-outline"],
-    ["uncategorized", "reorder-three-outline"],
-    ["something-new", "reorder-three-outline"],
+    ["event", "calendar-outline"],
+    ["scheduled", "checkbox-outline"],
+    ["reminder", "checkbox-outline"],
+    ["uncategorized", "checkbox-outline"],
+    ["task", "checkbox-outline"],
+    ["something-new", "checkbox-outline"],
   ])("%s -> %s", (category, icon) => {
     expect(noteCardInfo(note({ category }), PLACES, DEFAULT_CATEGORY_COLORS).icon).toBe(icon);
   });
 
   test("background is the user's category color, icon black or white by contrast", () => {
-    const custom = { ...DEFAULT_CATEGORY_COLORS, task: "#FFEB3B" };
-    const info = noteCardInfo(note({ category: "task" }), PLACES, custom);
+    const custom = { ...DEFAULT_CATEGORY_COLORS, todo: "#FFEB3B" };
+    const info = noteCardInfo(note({ category: "todo" }), PLACES, custom);
     expect(info.tileColor).toBe("#FFEB3B");
     expect(info.tileIconColor).toBe("#000000");
-    const dflt = noteCardInfo(note({ category: "task" }), PLACES, DEFAULT_CATEGORY_COLORS);
+    const dflt = noteCardInfo(note({ category: "todo" }), PLACES, DEFAULT_CATEGORY_COLORS);
     expect(dflt.tileIconColor).toBe("#FFFFFF");
   });
 });
@@ -52,8 +54,8 @@ describe("meta line", () => {
   });
 
   test("category text uses its color when readable on white (contrast >= 4.5)", () => {
-    expect(noteCardInfo(note({ category: "task" }), PLACES, DEFAULT_CATEGORY_COLORS).categoryTextColor).toBe(
-      DEFAULT_CATEGORY_COLORS.task
+    expect(noteCardInfo(note({ category: "todo" }), PLACES, DEFAULT_CATEGORY_COLORS).categoryTextColor).toBe(
+      DEFAULT_CATEGORY_COLORS.todo
     );
   });
 
@@ -65,7 +67,7 @@ describe("meta line", () => {
   test("dark mode: category text must be readable on the dark card", () => {
     // the default task blue is too dark on a dark card -> textMuted
     expect(
-      noteCardInfo(note({ category: "task" }), PLACES, DEFAULT_CATEGORY_COLORS, darkColors).categoryTextColor
+      noteCardInfo(note({ category: "todo" }), PLACES, DEFAULT_CATEGORY_COLORS, darkColors).categoryTextColor
     ).toBe(darkColors.textMuted);
     // a light yellow reads fine on a dark card
     const custom = { ...DEFAULT_CATEGORY_COLORS, idea: "#FFEB3B" };
@@ -123,5 +125,19 @@ describe("currentPlaceLabel (the chip at the top of the list)", () => {
 
   test("an old stored name like 'home' maps to the place of that kind", () => {
     expect(currentPlaceLabel("home", PLACES)).toBe("At Home");
+  });
+});
+
+describe("kinds on the card", () => {
+  test("labels: To-do, Errand, Idea, Event; old values show as To-do", () => {
+    expect(noteCardInfo(note({ category: "todo" }), PLACES, DEFAULT_CATEGORY_COLORS).categoryLabel).toBe("To-do");
+    expect(noteCardInfo(note({ category: "event" }), PLACES, DEFAULT_CATEGORY_COLORS).categoryLabel).toBe("Event");
+    expect(noteCardInfo(note({ category: "scheduled" }), PLACES, DEFAULT_CATEGORY_COLORS).categoryLabel).toBe("To-do");
+  });
+
+  test("an idea never alerts: bell-off even with a time", () => {
+    expect(
+      noteCardInfo(note({ category: "idea", contexts: ["18:00"] }), PLACES, DEFAULT_CATEGORY_COLORS).trailing
+    ).toEqual({ kind: "off" });
   });
 });

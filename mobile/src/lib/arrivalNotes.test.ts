@@ -78,3 +78,9 @@ describe("arrivalCandidates (notes to show when you arrive at a place)", () => {
     expect(arrivalCandidates([note({ reminders_enabled: false })])).toEqual([]);
   });
 });
+
+test("ideas never show up as arrival alerts", () => {
+  const idea = note({ content: "idea for the house", category: "idea" });
+  const todo = note({ content: "water the plants", category: "todo" });
+  expect(arrivalCandidates([idea, todo])).toEqual([todo]);
+});

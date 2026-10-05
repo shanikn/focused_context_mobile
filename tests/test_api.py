@@ -83,7 +83,7 @@ def test_manual_metadata_override():
     # manually override category and location (explicit flags stop the
     # re-inference on update from overwriting them)
     client.put(f"/notes/{note_id}", params={
-        "category": "task",
+        "category": "todo",
         "category_explicit": "true",
         "location_explicit": "true",
         "location_value": "home",
@@ -93,7 +93,7 @@ def test_manual_metadata_override():
     note = next(n for n in notes if n["_id"] == note_id)
     full_delete(note_id)
     home = next(p for p in client.get("/places/").json() if p["kind"] == "home")
-    assert note["category"] == "task"
+    assert note["category"] == "todo"
     assert home["id"] in note["contexts"]
 
 
@@ -128,7 +128,7 @@ def _app_edit_payload(content, hour, minute, time_explicit=True):
     return {
         "content": content,
         "list_name": "General",
-        "category": "uncategorized",
+        "category": "todo",
         "category_explicit": "false",
         "location_explicit": "false",
         "location_value": "",

@@ -1,4 +1,5 @@
 import { Note } from "../types/notes";
+import { canAlert } from "./alertRules";
 
 // Pure planning for exact reminder alarms. Notes with a time the user set or
 // wrote ("at 17:53", "evening") get one; location default times don't, they
@@ -42,7 +43,7 @@ function hasExactTime(note: Note): boolean {
 }
 
 function isActive(note: Note, now: Date): boolean {
-  if (note.reminders_enabled === false || note.never_show) {
+  if (!canAlert(note) || note.never_show) {
     return false;
   }
   if (note.cooldown_until) {

@@ -19,8 +19,16 @@ def _place_id(content):
     return place.id if place else None
 
 
-def test_task():
-    assert categorize("I need to do my homework") == "task"
+# kinds: todo, errand (go somewhere), idea (never alerts), event
+def test_only_four_kinds():
+    from agents.categorizer import KINDS
+    assert KINDS == ("todo", "errand", "idea", "event")
+
+
+def test_todo_is_the_default():
+    assert categorize("I need to do my homework") == "todo"
+    assert categorize("Remember to call mom") == "todo"
+    assert categorize("blah blah blah") == "todo"
 
 
 def test_errand():
@@ -29,18 +37,28 @@ def test_errand():
 
 def test_idea():
     assert categorize("Random idea for a app") == "idea"
+    assert categorize("What if notes could remind you by place?") == "idea"
+    assert categorize("brainstorm names for the project") == "idea"
 
 
-def test_reminder():
-    assert categorize("Remember to call mom") == "reminder"
+def test_event():
+    assert categorize("Dentist appointment at 3pm") == "event"
+    assert categorize("meeting with Dana tomorrow") == "event"
+    assert categorize("Computer Networks exam") == "event"
+    assert categorize("doctor on Sunday") == "event"
+    assert categorize("job interview at 10:00") == "event"
 
 
-def test_scheduled():
-    assert categorize("Dentist appointment at 3pm") == "scheduled"
+def test_a_date_or_time_alone_does_not_decide_the_kind():
+    assert categorize("call mom at 17:00") == "todo"
+    assert categorize("pay the electricity bill on the 9th of October") == "todo"
+    assert categorize("buy flowers tomorrow at 18:00") == "errand"
+    assert categorize("get carrots on Friday") == "errand"
 
 
-def test_uncategorized():
-    assert categorize("blah blah blah") == "uncategorized"
+def test_get_to_somewhere_is_not_an_errand():
+    assert categorize("get up early") == "todo"
+    assert categorize("get ready for the trip") == "todo"
 
 
 # infer_time tests
@@ -151,9 +169,9 @@ def test_infer_date_ignores_impossible_dates():
     assert infer_date("may I borrow it", now) is None
 
 
-def test_note_with_a_date_is_scheduled():
+def test_exam_with_a_date_is_an_event():
     note = "get 20 minutes early to the exam on the 9th of October"
-    assert categorize(note) == "scheduled"
+    assert categorize(note) == "event"
     assert _place_id(note) == "p-uni"
 
 
@@ -162,5 +180,5 @@ def test_get_something_is_an_errand():
     assert categorize("grab bread from the supermarket") == "errand"
 
 
-def test_get_with_a_day_is_scheduled_not_errand():
-    assert categorize("get to the exam on the 9th of October") == "scheduled"
+def test_get_to_an_exam_is_an_event_not_an_errand():
+    assert categorize("get to the exam on the 9th of October") == "event"

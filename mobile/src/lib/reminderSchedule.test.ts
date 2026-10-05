@@ -116,3 +116,15 @@ test("caps the number of alarms, keeping the soonest dated ones", () => {
   const plan = planReminderSchedule([...dated, daily], NOW, 3);
   expect(plan.map((r) => r.noteId)).toEqual([daily._id, dated[1]._id, dated[2]._id]);
 });
+
+test("an idea never gets an alarm, even with a time", () => {
+  const idea = note({ category: "idea", contexts: ["17:53"], reminder_time_source: "text" });
+  const explicitIdea = note({
+    category: "idea",
+    remind_time_explicit: true,
+    remind_at_hour: 9,
+    remind_at_minute: 0,
+    reminder_time_source: "explicit",
+  });
+  expect(planReminderSchedule([idea, explicitIdea], NOW)).toEqual([]);
+});

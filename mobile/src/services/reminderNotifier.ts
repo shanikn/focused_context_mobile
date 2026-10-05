@@ -9,6 +9,7 @@ import {
   wasNotifiedInSlot,
 } from "../lib/reminderPrefs";
 import { getScheduledNoteIds } from "./scheduledReminders";
+import { canAlert } from "../lib/alertRules";
 import { arrivalCandidates } from "../lib/arrivalNotes";
 
 Notifications.setNotificationHandler({
@@ -123,7 +124,8 @@ export async function checkAndNotifyReminders(
   // arrival: the top notes for this place (the backend already ranks and
   // filters them for the location); notes with a specific time wait for it,
   // unless they're about arriving. Otherwise: only notes whose time is due now
-  const candidates = options.onArrival ? arrivalCandidates(reminders) : reminders;
+  // (ideas never notify, even from an older backend that still returns them)
+  const candidates = options.onArrival ? arrivalCandidates(reminders) : reminders.filter(canAlert);
   // polling is the fallback: notes with an exact scheduled alarm are skipped
   // on the timed path so they don't notify twice
   const scheduledIds = options.onArrival ? new Set<string>() : await getScheduledNoteIds();

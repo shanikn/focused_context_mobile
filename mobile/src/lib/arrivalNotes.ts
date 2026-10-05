@@ -1,4 +1,5 @@
 import { Note } from "../types/notes";
+import { canAlert } from "./alertRules";
 
 // Which notes to show when you arrive at a place. A note with a specific
 // time ("remind me I'm home at 17:54") waits for that time and its exact
@@ -31,7 +32,7 @@ export function isAboutArriving(note: Note): boolean {
 // Keeps the backend's ranking; at most `max` notes.
 export function arrivalCandidates(notes: Note[], max: number = MAX_ARRIVAL_NOTES): Note[] {
   return notes
-    .filter((n) => n.reminders_enabled !== false)
+    .filter(canAlert)
     .filter((n) => !hasSpecificTime(n) || isAboutArriving(n))
     .slice(0, max);
 }

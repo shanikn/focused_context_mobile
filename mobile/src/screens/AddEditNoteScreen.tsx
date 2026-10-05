@@ -20,18 +20,13 @@ import { folderNames, GENERAL } from "../lib/folderOrder";
 import { syncScheduledReminders } from "../services/scheduledReminders";
 import { loadPlaces } from "../services/placesStore";
 import { ServerPlace } from "../lib/userPlaces";
+import { CATEGORIES, categoryLabel, normalizeCategory } from "../lib/categoryColors";
 import { Card, Chip, ChipRow, PrimaryButton, TextButton, ToggleRow } from "../components/ui";
 import { MIN_TOUCH_TARGET, Theme, fonts, spacing } from "../theme";
 import { useTheme, useThemedStyles } from "../ThemeContext";
 
 type RouteParams = RouteProp<NotesStackParamList, "AddEditNote">;
 
-// chips shown in the Category card (after "Smart")
-const CATEGORY_OPTIONS = ["task", "errand", "idea", "reminder", "scheduled"] as const;
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 function formatDateValue(date: Date): string {
   const year = date.getFullYear();
@@ -115,7 +110,7 @@ export default function AddEditNoteScreen() {
   const [content, setContent] = useState(existingNote?.content || "");
   const [listName, setListName] = useState(existingNote?.list_name || initialListName || GENERAL);
   const [categoryExplicit, setCategoryExplicit] = useState(existingNote?.category_explicit ?? false);
-  const [selectedCategory, setSelectedCategory] = useState(existingNote?.category || "uncategorized");
+  const [selectedCategory, setSelectedCategory] = useState<string>(normalizeCategory(existingNote?.category));
   const [locationExplicit, setLocationExplicit] = useState(existingNote?.location_explicit ?? false);
   // place id of the hand-picked location
   const [selectedLocation, setSelectedLocation] = useState(existingNote?.location_value || "");
@@ -330,10 +325,10 @@ export default function AddEditNoteScreen() {
               selected={!categoryExplicit}
               onPress={() => setCategoryExplicit(false)}
             />
-            {CATEGORY_OPTIONS.map((category) => (
+            {CATEGORIES.map((category) => (
               <Chip
                 key={category}
-                label={capitalize(category)}
+                label={categoryLabel(category)}
                 selected={categoryExplicit && selectedCategory === category}
                 onPress={() => {
                   setSelectedCategory(category);

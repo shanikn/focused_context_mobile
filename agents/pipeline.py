@@ -20,7 +20,10 @@ def reminder_time_source(note: Note) -> Optional[str]:
     """Where a note's reminder time comes from:
     "explicit" (set by the user), "text" (written in the note, e.g. "at 17:53"
     or "evening"), "default" (the location's default time), or None.
-    The phone schedules exact alarms only for explicit and text times."""
+    The phone schedules exact alarms only for explicit and text times.
+    Ideas never alert, so they never have a reminder time source."""
+    if note.category == "idea":
+        return None
     if note.remind_time_explicit and note.remind_at_hour is not None:
         return "explicit"
     time = next(

@@ -2,7 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   BASIC_SWATCHES,
   CATEGORIES,
+  categoryLabel,
   colorFor,
+  normalizeCategory,
   contrastRatio,
   DEFAULT_CATEGORY_COLORS,
   getCategoryColors,
@@ -18,7 +20,7 @@ beforeEach(async () => {
 
 describe("defaults", () => {
   test("every category has a default color", () => {
-    expect(CATEGORIES).toEqual(["task", "errand", "idea", "reminder", "scheduled", "uncategorized"]);
+    expect(CATEGORIES).toEqual(["todo", "errand", "idea", "event"]);
     for (const c of CATEGORIES) {
       expect(DEFAULT_CATEGORY_COLORS[c]).toMatch(/^#[0-9A-F]{6}$/);
     }
@@ -81,9 +83,9 @@ describe("storage on the phone", () => {
   });
 
   test("setCategoryColor saves a normalized color for that category only", async () => {
-    await setCategoryColor("task", "#ff0000");
+    await setCategoryColor("todo", "#ff0000");
     const colors = await getCategoryColors();
-    expect(colors.task).toBe("#FF0000");
+    expect(colors.todo).toBe("#FF0000");
     expect(colors.idea).toBe(DEFAULT_CATEGORY_COLORS.idea);
   });
 
@@ -94,16 +96,16 @@ describe("storage on the phone", () => {
   });
 
   test("resetCategoryColor goes back to the default", async () => {
-    await setCategoryColor("task", "#FF0000");
+    await setCategoryColor("todo", "#FF0000");
     await setCategoryColor("idea", "#00FF00");
-    await resetCategoryColor("task");
+    await resetCategoryColor("todo");
     const colors = await getCategoryColors();
-    expect(colors.task).toBe(DEFAULT_CATEGORY_COLORS.task);
+    expect(colors.todo).toBe(DEFAULT_CATEGORY_COLORS.todo);
     expect(colors.idea).toBe("#00FF00");
   });
 
   test("invalid color or unknown category is rejected and nothing is saved", async () => {
-    await expect(setCategoryColor("task", "blue")).rejects.toThrow();
+    await expect(setCategoryColor("todo", "blue")).rejects.toThrow();
     await expect(setCategoryColor("shopping" as never, "#FF0000")).rejects.toThrow();
     expect(await getCategoryColors()).toEqual(DEFAULT_CATEGORY_COLORS);
   });
@@ -113,17 +115,49 @@ describe("storage on the phone", () => {
     expect(await getCategoryColors()).toEqual(DEFAULT_CATEGORY_COLORS);
     await AsyncStorage.setItem(
       "focusedcontext.categoryColors",
-      JSON.stringify({ task: "nope", idea: "#123456", unknown: "#000000" })
+      JSON.stringify({ todo: "nope", idea: "#123456", unknown: "#000000" })
     );
     const colors = await getCategoryColors();
-    expect(colors.task).toBe(DEFAULT_CATEGORY_COLORS.task);
+    expect(colors.todo).toBe(DEFAULT_CATEGORY_COLORS.todo);
     expect(colors.idea).toBe("#123456");
     expect(Object.keys(colors)).toEqual([...CATEGORIES]);
   });
 });
 
-test("colorFor: a note's category color, uncategorized for unknown categories", () => {
-  const colors = { ...DEFAULT_CATEGORY_COLORS, task: "#FF0000" };
-  expect(colorFor("task", colors)).toBe("#FF0000");
-  expect(colorFor("something-new", colors)).toBe(DEFAULT_CATEGORY_COLORS.uncategorized);
+test("colorFor: a note's category color; old and unknown categories use To-do's", () => {
+  const colors = { ...DEFAULT_CATEGORY_COLORS, todo: "#FF0000" };
+  expect(colorFor("todo", colors)).toBe("#FF0000");
+  expect(colorFor("scheduled", colors)).toBe("#FF0000");
+  expect(colorFor("something-new", colors)).toBe("#FF0000");
+  expect(colorFor("event", colors)).toBe(DEFAULT_CATEGORY_COLORS.event);
+});
+
+describe("the four kinds", () => {
+  test("old values (scheduled, reminder, uncategorized, task) and unknown ones count as To-do", () => {
+    for (const old of ["scheduled", "reminder", "uncategorized", "task", "weird", ""]) {
+      expect(normalizeCategory(old)).toBe("todo");
+    }
+    for (const kind of ["todo", "errand", "idea", "event"]) {
+      expect(normalizeCategory(kind)).toBe(kind);
+    }
+  });
+
+  test("labels", () => {
+    expect(CATEGORIES.map(categoryLabel)).toEqual(["To-do", "Errand", "Idea", "Event"]);
+    expect(categoryLabel("scheduled")).toBe("To-do");
+  });
+
+  test("custom colors are kept for kinds that still exist; an old Task color moves to To-do", async () => {
+    await AsyncStorage.setItem(
+      "focusedcontext.categoryColors",
+      JSON.stringify({ errand: "#111111", idea: "#222222", task: "#333333", scheduled: "#444444", reminder: "#555555" })
+    );
+    const colors = await getCategoryColors();
+    expect(colors).toEqual({ todo: "#333333", errand: "#111111", idea: "#222222", event: DEFAULT_CATEGORY_COLORS.event });
+  });
+
+  test("a saved To-do color wins over an old Task one", async () => {
+    await AsyncStorage.setItem("focusedcontext.categoryColors", JSON.stringify({ task: "#333333", todo: "#666666" }));
+    expect((await getCategoryColors()).todo).toBe("#666666");
+  });
 });

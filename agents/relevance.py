@@ -79,6 +79,7 @@ def get_relevant_notes(
             dict_to_note(d) for d in all_docs
             if location_bucket in d.get("contexts", [])
             and not d.get("never_show", False)
+            and d.get("category") != "idea"  # ideas never alert
             and d.get("reminders_enabled", True)
         ]
         candidates = [
@@ -119,6 +120,7 @@ def get_relevant_notes(
     filtered = [
         x for x in notes
         if not x.never_show
+        and x.category != "idea"  # ideas never alert
         and x.reminders_enabled
         and not is_on_cooldown(x)
         and _is_due_today(x, today_str)
@@ -150,6 +152,7 @@ def get_context_reminders(
     filtered = [
         n for n in notes
         if not n.never_show
+        and n.category != "idea"  # ideas never alert
         and n.reminders_enabled
         and not is_on_cooldown(n)
         and _is_due_today(n, today_str)

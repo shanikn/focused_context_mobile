@@ -94,7 +94,7 @@ def create_note(
         content=request.content,
         list_name=request.list_name,
         reminders_enabled=request.reminders_enabled,
-        category=request.category or "uncategorized",
+        category=request.category or "todo",
         category_explicit=request.category_explicit,
         location_explicit=request.location_explicit,
         location_value=request.location_value,

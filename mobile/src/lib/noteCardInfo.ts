@@ -2,7 +2,16 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Note } from "../types/notes";
 import { lightColors, Palette } from "../theme";
-import { CategoryColors, colorFor, contrastRatio, textColorFor } from "./categoryColors";
+import { canAlert } from "./alertRules";
+import {
+  Category,
+  categoryLabel,
+  CategoryColors,
+  colorFor,
+  contrastRatio,
+  normalizeCategory,
+  textColorFor,
+} from "./categoryColors";
 import { GENERAL } from "./folderOrder";
 import { locationLabel, noteTime } from "./noteLabels";
 import { resolveCurrentLocation, ServerPlace, UNKNOWN } from "./userPlaces";
@@ -11,13 +20,11 @@ import { resolveCurrentLocation, ServerPlace, UNKNOWN } from "./userPlaces";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
-const CATEGORY_ICONS: Record<string, IconName> = {
-  scheduled: "time-outline",
-  reminder: "notifications-outline",
+const CATEGORY_ICONS: Record<Category, IconName> = {
+  todo: "checkbox-outline",
   errand: "bag-outline",
-  task: "checkbox-outline",
   idea: "bulb-outline",
-  uncategorized: "reorder-three-outline",
+  event: "calendar-outline",
 };
 
 export type Trailing = { kind: "time"; time: string } | { kind: "smart" } | { kind: "off" };
@@ -40,11 +47,11 @@ export function noteCardInfo(
   palette: Palette = lightColors
 ): NoteCardInfo {
   const color = colorFor(note.category, categoryColors);
-  const category = note.category || "uncategorized";
+  const category = normalizeCategory(note.category);
   const time = noteTime(note);
   let trailing: Trailing;
-  // alerts off wins: a time would look like an alarm that won't ring
-  if (note.reminders_enabled === false) {
+  // alerts off (or an idea) wins: a time would look like an alarm that won't ring
+  if (!canAlert(note)) {
     trailing = { kind: "off" };
   } else if (time) {
     trailing = { kind: "time", time };
@@ -52,10 +59,10 @@ export function noteCardInfo(
     trailing = { kind: "smart" };
   }
   return {
-    icon: CATEGORY_ICONS[category] ?? CATEGORY_ICONS.uncategorized,
+    icon: CATEGORY_ICONS[category],
     tileColor: color,
     tileIconColor: textColorFor(color),
-    categoryLabel: category.charAt(0).toUpperCase() + category.slice(1),
+    categoryLabel: categoryLabel(category),
     // readable on this theme's card (white in light mode, dark green-grey in dark mode)
     categoryTextColor: contrastRatio(color, palette.surface) >= 4.5 ? color : palette.textMuted,
     placeName: locationLabel(note, places),

@@ -1,5 +1,5 @@
 import { Note } from "../types/notes";
-import { CATEGORIES } from "./categoryColors";
+import { normalizeCategory } from "./categoryColors";
 import { ALL, GENERAL } from "./folderOrder";
 
 // Filters for the notes list: folder tab, category chip and search text.
@@ -28,17 +28,13 @@ export function normalizeForSearch(text: string): string {
     .trim();
 }
 
-function categoryOf(note: Note): string {
-  return (CATEGORIES as readonly string[]).includes(note.category) ? note.category : "uncategorized";
-}
-
 export function filterNotes(notes: Note[], filters: NoteFilters): Note[] {
   const words = normalizeForSearch(filters.query).split(" ").filter(Boolean);
   return notes.filter((note) => {
     if (filters.folder !== ALL && (note.list_name || GENERAL) !== filters.folder) {
       return false;
     }
-    if (filters.category !== ALL_CATEGORIES && categoryOf(note) !== filters.category) {
+    if (filters.category !== ALL_CATEGORIES && normalizeCategory(note.category) !== filters.category) {
       return false;
     }
     if (words.length > 0) {

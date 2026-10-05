@@ -28,6 +28,7 @@ import { loadPlaces } from "../services/placesStore";
 import { ServerPlace } from "../lib/userPlaces";
 import {
   CATEGORIES,
+  categoryLabel,
   CategoryColors,
   DEFAULT_CATEGORY_COLORS,
   getCategoryColors,
@@ -259,11 +260,11 @@ export default function NotesListScreen() {
                 {CATEGORIES.map((category) => (
                   <Chip
                     key={category}
-                    label={category.charAt(0).toUpperCase() + category.slice(1)}
+                    label={categoryLabel(category)}
                     dotColor={categoryColors[category]}
                     selected={categoryFilter === category}
                     onPress={() => setCategoryFilter(categoryFilter === category ? ALL_CATEGORIES : category)}
-                    accessibilityLabel={`${category.charAt(0).toUpperCase() + category.slice(1)} notes`}
+                    accessibilityLabel={`${categoryLabel(category)} notes`}
                   />
                 ))}
               </ChipRow>

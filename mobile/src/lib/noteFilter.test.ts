@@ -4,11 +4,11 @@ import { Note } from "../types/notes";
 let n = 0;
 function note(content: string, fields: Partial<Note> = {}): Note {
   n += 1;
-  return { _id: `n${n}`, content, category: "task", list_name: "General", contexts: [], ...fields } as Note;
+  return { _id: `n${n}`, content, category: "todo", list_name: "General", contexts: [], ...fields } as Note;
 }
 
 const buyMilk = note("Buy MILK and eggs", { category: "errand" });
-const exam = note("Prepare for the Computer Networks exam", { category: "task", list_name: "Uni" });
+const exam = note("Prepare for the Computer Networks exam", { category: "event", list_name: "Uni" });
 const hebrew = note("לקנות חלב ולחם", { category: "errand", list_name: "Home" });
 const niqqud = note("לִקְנוֹת פֵּרוֹת", { category: "errand" });
 const idea = note("App idea: smart notes", { category: "idea" });
@@ -66,8 +66,9 @@ describe("filterNotes", () => {
       ]);
     });
 
-    test("an unknown category counts as uncategorized", () => {
-      expect(ids(filterNotes(ALL_NOTES, { ...all, category: "uncategorized" }))).toEqual([unknownCategory._id]);
+    test("old and unknown categories count as To-do", () => {
+      expect(ids(filterNotes(ALL_NOTES, { ...all, category: "todo" }))).toEqual([noFolder._id, unknownCategory._id]);
+      expect(ids(filterNotes(ALL_NOTES, { ...all, category: "event" }))).toEqual([exam._id]);
     });
   });
 

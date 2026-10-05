@@ -42,6 +42,7 @@ import CategoryColorModal from "../components/CategoryColorModal";
 import {
   Category,
   CATEGORIES,
+  categoryLabel,
   CategoryColors,
   DEFAULT_CATEGORY_COLORS,
   getCategoryColors,
@@ -500,11 +501,11 @@ export default function SettingsScreen() {
                 style={[styles.colorRow, i > 0 && styles.rowDivider]}
                 onPress={() => setColorFor(category)}
                 accessibilityRole="button"
-                accessibilityLabel={`${category} color`}
+                accessibilityLabel={`${categoryLabel(category)} color`}
               >
                 <View style={[styles.swatch, { backgroundColor: color }]} />
                 <Text style={[type.body, styles.colorName]}>
-                  {category.charAt(0).toUpperCase() + category.slice(1)}
+                  {categoryLabel(category)}
                 </Text>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
               </TouchableOpacity>
@@ -546,7 +547,7 @@ export default function SettingsScreen() {
 
       <CategoryColorModal
         visible={colorFor !== null}
-        category={colorFor ?? ""}
+        category={colorFor ? categoryLabel(colorFor) : ""}
         color={colorFor ? categoryColors[colorFor] : "#000000"}
         isDefault={colorFor ? categoryColors[colorFor] === DEFAULT_CATEGORY_COLORS[colorFor] : true}
         onSave={handleSaveCategoryColor}

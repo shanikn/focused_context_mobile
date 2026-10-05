@@ -38,7 +38,7 @@ jest.mock("@react-native-community/datetimepicker", () => {
 const EXISTING = {
   _id: "note-1",
   content: "go for an evening jog",
-  category: "task",
+  category: "todo",
   contexts: ["18:00"],
   list_name: "General",
   reminders_enabled: true,
@@ -236,4 +236,18 @@ test("the back button goes back without saving", async () => {
   });
   expect(mockNavigation.goBack).toHaveBeenCalled();
   expect(updateNote).not.toHaveBeenCalled();
+});
+
+test("category chips: the four kinds; an old kind shows as To-do", async () => {
+  const tree = await renderScreen({ note: { ...EXISTING, category: "scheduled", category_explicit: true } });
+  const chip = (label: string) =>
+    tree.root.findAll((n) => typeof n.type !== "string" && n.props.accessibilityLabel === label && n.props.onPress)[0];
+  for (const label of ["To-do", "Errand", "Idea", "Event"]) {
+    expect(chip(label)).toBeTruthy();
+  }
+  expect(chip("Reminder")).toBeUndefined();
+  expect(chip("Scheduled")).toBeUndefined();
+  expect(chip("To-do").props.accessibilityState.selected).toBe(true);
+  await press(tree, "Save");
+  expect(updateNote).toHaveBeenLastCalledWith("note-1", expect.objectContaining({ category: "todo" }));
 });

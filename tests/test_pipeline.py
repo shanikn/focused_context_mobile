@@ -104,7 +104,7 @@ def test_date_only_note_gets_a_morning_alarm_on_that_day():
     note = Note(content="get 20 minutes early to the exam on the 9th of October")
     fields = compute_enrichment(note, [uni], datetime(2026, 10, 4, 13, 0))
 
-    assert fields["category"] == "scheduled"
+    assert fields["category"] == "event"
     assert fields["contexts"] == ["p-uni", "08:00"]
     assert fields["remind_on_date"] == "2026-10-09"
     note.contexts = fields["contexts"]
@@ -119,3 +119,30 @@ def test_written_time_beats_the_date_only_default():
     fields = compute_enrichment(note, [], datetime(2026, 10, 4, 13, 0))
     assert fields["contexts"] == ["09:25"]
     assert fields["remind_on_date"] == "2026-10-09"
+
+
+def test_ideas_never_get_an_alarm():
+    from agents.pipeline import reminder_time_source
+    idea = Note(content="idea: an app that reminds you at 18:00", category="idea", contexts=["18:00"])
+    assert reminder_time_source(idea) is None
+    explicit = Note(
+        content="idea for later", category="idea", contexts=["09:30"],
+        remind_time_explicit=True, remind_at_hour=9, remind_at_minute=30,
+    )
+    assert reminder_time_source(explicit) is None
+
+
+def test_ideas_are_never_returned_as_reminders():
+    idea = Note(content="random idea about home automation at home", category_explicit=True, category="idea")
+    todo = Note(content="clean the kitchen at home")
+    process_new_notes(idea)
+    process_new_notes(todo)
+    # smart dating may push the default 09:00 to tomorrow; make both due today
+    from notepad import update_note
+    for n in (idea, todo):
+        update_note(n.id, {"remind_on_date": None})
+    ids = [n.id for n in get_reminders("home", "home", 9)]
+    full_delete(idea.id)
+    full_delete(todo.id)
+    assert idea.id not in ids
+    assert todo.id in ids

@@ -33,7 +33,7 @@ import { useTheme, useThemedStyles } from "../ThemeContext";
 
 GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID });
 
-const TASK_COLOR = colorFor("task", DEFAULT_CATEGORY_COLORS);
+const TASK_COLOR = colorFor("todo", DEFAULT_CATEGORY_COLORS);
 
 // A note drawn like a card in the real list, to show what the app does
 // before signing in. Not a real note, so screen readers skip it.
@@ -53,7 +53,7 @@ function SampleNote() {
           Water the plants
         </Text>
         <View style={styles.sampleMeta}>
-          <Text style={[type.caption, styles.sampleCategory]}>Task</Text>
+          <Text style={[type.caption, styles.sampleCategory]}>To-do</Text>
           <Text style={type.caption}> · </Text>
           <Ionicons name="location-outline" size={13} color={colors.textMuted} />
           <Text style={type.caption}> Home</Text>
