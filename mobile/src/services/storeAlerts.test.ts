@@ -22,7 +22,10 @@ jest.mock("./locationPermissions", () => ({ getGrantedPermissions: jest.fn() }))
 jest.mock("./geofence", () => ({ syncGeofencing: jest.fn().mockResolvedValue(undefined) }));
 
 const HERE = { latitude: 32.1, longitude: 34.8 };
-const position = (p: { latitude: number; longitude: number }) => ({ coords: p, timestamp: Date.now() });
+const position = (p: { latitude: number; longitude: number }) => ({
+  coords: { ...p, accuracy: 20 },
+  timestamp: Date.now(),
+});
 
 const errand = (id: string, content: string, store_type: string, fields: Partial<Note> = {}) =>
   ({

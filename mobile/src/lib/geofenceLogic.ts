@@ -1,4 +1,5 @@
 import { UNKNOWN, UserPlace } from "./userPlaces";
+import { distanceMeters, LatLon } from "./geo";
 
 // Pure logic for geofence events; the task itself lives in services/geofence.ts.
 // Region identifiers are place ids, and so is the current location.
@@ -21,6 +22,28 @@ export function locationAfterGeofenceEvent(
     return { location: regionId, arrived: true };
   }
   return { location: current === regionId ? UNKNOWN : current, arrived: false };
+}
+
+// After a place's location or radius changes (geofences may take a while to
+// report it, or never do when you're already inside): inside its radius
+// selects it; clearly outside (beyond the fix's accuracy) while it was
+// selected goes to "Not at a place"; otherwise nothing changes.
+export function locationAfterPlaceChange(
+  current: string,
+  place: Pick<UserPlace, "id" | "coords">,
+  position: (LatLon & { accuracy?: number | null }) | null
+): string {
+  if (!position || !place.coords) {
+    return current;
+  }
+  const distance = distanceMeters(position, place.coords);
+  if (distance <= place.coords.radius) {
+    return place.id;
+  }
+  if (current === place.id && distance > place.coords.radius + (position.accuracy ?? 0)) {
+    return UNKNOWN;
+  }
+  return current;
 }
 
 // same shape as expo-location's LocationRegion

@@ -7,10 +7,10 @@ import {
   Alert,
   AlertButton,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import * as Location from "expo-location";
 import { useFocusEffect } from "@react-navigation/native";
 import { signOut } from "firebase/auth";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
@@ -27,6 +27,7 @@ import {
 import { syncStoreAlerts } from "../services/storeAlerts";
 import { checkAndNotifyReminders, ensureNotificationPermissions } from "../services/reminderNotifier";
 import {
+  getAllCoords,
   removePlaceCoords,
   resolveCurrentLocation,
   placeSubtitle,
@@ -38,6 +39,12 @@ import {
 } from "../lib/userPlaces";
 import { createPlace, deletePlace, updatePlace } from "../api/places";
 import { loadPlaces } from "../services/placesStore";
+import { Fix, freshFix, quickFix, recentFix } from "../services/currentPosition";
+import { locationAfterPlaceChange } from "../lib/geofenceLogic";
+import { distanceMeters } from "../lib/geo";
+
+// a fresh fix this close to the quick one isn't worth re-saving
+const REFINE_MIN_MOVE_M = 25;
 import { AddressResult } from "../lib/nominatim";
 import PlaceEditorModal from "../components/PlaceEditorModal";
 import AddressSearchModal from "../components/AddressSearchModal";
@@ -81,7 +88,8 @@ export default function SettingsScreen() {
   const [checkingNow, setCheckingNow] = useState(false);
   const [places, setPlaces] = useState<UserPlace[]>([]);
   const [permissions, setPermissions] = useState<GrantedPermissions | null>(null);
-  const [savingPlaceId, setSavingPlaceId] = useState<string | null>(null);
+  // the place waiting for a location fix ("Locating…"); doesn't block the others
+  const [locatingPlaceId, setLocatingPlaceId] = useState<string | null>(null);
   // place the user tapped "Use current location" for before the permission
   // flow; saved once the flow finishes
   const pendingPlaceId = useRef<string | null>(null);
@@ -119,22 +127,67 @@ export default function SettingsScreen() {
     await syncGeofencing();
   }, [refreshPlaces]);
 
+  // After a place's location or radius changes, re-check "Where you are now"
+  // against where the phone is (a fix we already have, or a quick one).
+  // Never prompts for permission.
+  const recheckWhereIAm = useCallback(async (placeId: string, known?: Fix) => {
+    try {
+      const granted = await getGrantedPermissions();
+      if (!granted.foreground) {
+        return;
+      }
+      const position = known ?? (await quickFix());
+      const coords = (await getAllCoords())[placeId] ?? null;
+      const current = await getReminderLocation();
+      const next = locationAfterPlaceChange(current, { id: placeId, coords }, position);
+      if (next !== current) {
+        await setReminderLocation(next);
+        setLocation(next);
+      }
+    } catch {
+      // best effort: geofences will catch up
+    }
+  }, []);
+
+  const saveFixFor = useCallback(
+    async (placeId: string, fix: Fix) => {
+      await setPlaceCoords(placeId, fix, undefined, { source: "current" });
+      await afterPlacesChanged();
+      await recheckWhereIAm(placeId, fix);
+    },
+    [afterPlacesChanged, recheckWhereIAm]
+  );
+
+  // A recent position the phone already has saves instantly, and a fresh fix
+  // refines it in the background. Without one, the place shows "Locating…"
+  // until a fresh fix arrives (or 10 s pass).
   const saveCurrentLocationFor = useCallback(
     async (placeId: string) => {
-      setSavingPlaceId(placeId);
-      try {
-        const position = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
+      const quick = await recentFix();
+      if (quick) {
+        await saveFixFor(placeId, quick);
+        freshFix().then((better) => {
+          if (better && distanceMeters(quick, better) > REFINE_MIN_MOVE_M) {
+            saveFixFor(placeId, better).catch(() => {});
+          }
         });
-        await setPlaceCoords(placeId, position.coords, undefined, { source: "current" });
-        await afterPlacesChanged();
+        return;
+      }
+      setLocatingPlaceId(placeId);
+      try {
+        const fix = await freshFix();
+        if (!fix) {
+          Alert.alert("Couldn't get your location", "Check that location is on, or search the address instead.");
+          return;
+        }
+        await saveFixFor(placeId, fix);
       } catch {
-        Alert.alert("Couldn't get your location", "Check that location is on and try again.");
+        Alert.alert("Couldn't save the location", "Try again.");
       } finally {
-        setSavingPlaceId(null);
+        setLocatingPlaceId(null);
       }
     },
-    [afterPlacesChanged]
+    [saveFixFor]
   );
 
   const handlePermissionFlowDone = useCallback(
@@ -182,6 +235,7 @@ export default function SettingsScreen() {
     setAddressFor(null);
     Alert.alert("Location saved", `${place.name}: ${result.label}`);
     await afterPlacesChanged();
+    await recheckWhereIAm(place.id);
   };
 
   const handleEditorSave = async (name: string, keywords: string[]) => {
@@ -211,6 +265,7 @@ export default function SettingsScreen() {
     try {
       await setPlaceRadius(place.id, radius);
       await afterPlacesChanged();
+      await recheckWhereIAm(place.id);
     } catch {
       Alert.alert("Couldn't change the radius", "Try again.");
     }
@@ -427,7 +482,7 @@ export default function SettingsScreen() {
           )}
           {places.map((place) => {
             const isSet = place.coords !== null;
-            const saving = savingPlaceId === place.id;
+            const locating = locatingPlaceId === place.id;
             return (
               <View key={place.id} style={styles.placeRow}>
                 <View style={styles.placeTop}>
@@ -447,15 +502,22 @@ export default function SettingsScreen() {
                     <Text style={type.body} numberOfLines={1}>
                       {place.name}
                     </Text>
-                    <Text style={type.caption} numberOfLines={2}>
-                      {saving ? "Getting your location…" : placeSubtitle(place)}
-                    </Text>
+                    {locating ? (
+                      <View style={styles.locating}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={type.caption}>Locating…</Text>
+                      </View>
+                    ) : (
+                      <Text style={type.caption} numberOfLines={2}>
+                        {placeSubtitle(place)}
+                      </Text>
+                    )}
                   </View>
                   {!isSet && (
                     <TouchableOpacity
                       style={styles.setLocation}
                       onPress={() => openSetLocation(place)}
-                      disabled={savingPlaceId !== null}
+                      disabled={locating}
                       accessibilityRole="button"
                       accessibilityLabel={`Set location for ${place.name}`}
                     >
@@ -465,7 +527,7 @@ export default function SettingsScreen() {
                   <TouchableOpacity
                     style={styles.menuButton}
                     onPress={() => openPlaceMenu(place)}
-                    disabled={savingPlaceId !== null}
+                    disabled={locating}
                     accessibilityRole="button"
                     accessibilityLabel={`${place.name} options`}
                   >
@@ -489,7 +551,7 @@ export default function SettingsScreen() {
                     <TouchableOpacity
                       style={styles.removePlace}
                       onPress={() => handleRemovePlace(place)}
-                      disabled={savingPlaceId !== null}
+                      disabled={locating}
                       accessibilityRole="button"
                       accessibilityLabel={`Remove place ${place.name}`}
                     >
@@ -652,6 +714,7 @@ const makeStyles = ({ colors, type }: Theme) =>
     justifyContent: "center",
   },
   radiusRow: { marginTop: 10, marginLeft: 52, gap: 6 },
+  locating: { flexDirection: "row", alignItems: "center", gap: 6 },
   removePlace: {
     alignSelf: "flex-start",
     flexDirection: "row",

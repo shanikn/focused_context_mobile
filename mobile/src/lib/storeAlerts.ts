@@ -2,6 +2,10 @@ import { Note } from "../types/notes";
 import { canAlert } from "./alertRules";
 import { GeofenceRegion } from "./geofenceLogic";
 import { normalizeCategory } from "./categoryColors";
+import { distanceMeters, LatLon } from "./geo";
+
+export { distanceMeters };
+export type { LatLon };
 
 // Pure logic for errand alerts near any store of the right type (a
 // supermarket for "buy milk", a pharmacy for "buy vitamins"...). The I/O is
@@ -21,11 +25,6 @@ export interface Store {
   name: string;
   lat: number;
   lon: number;
-}
-
-export interface LatLon {
-  latitude: number;
-  longitude: number;
 }
 
 export interface StoreCache {
@@ -79,16 +78,6 @@ export function neededStoreTypes(errands: Note[]): StoreType[] {
 }
 
 // ---- when to look for stores again ----
-
-export function distanceMeters(a: LatLon, b: LatLon): number {
-  const r = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(b.latitude - a.latitude);
-  const dLon = toRad(b.longitude - a.longitude);
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLon / 2) ** 2;
-  return 2 * r * Math.asin(Math.sqrt(h));
-}
 
 export function needsStoreRefresh(
   cache: StoreCache | null,

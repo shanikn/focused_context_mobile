@@ -150,3 +150,36 @@ describe("regionsChanged (skip re-registering when nothing changed)", () => {
     expect(regionsChanged(null, [home])).toBe(true);
   });
 });
+
+describe("locationAfterPlaceChange: re-check Where you are now after a place's location or radius changes", () => {
+  const { locationAfterPlaceChange } = require("./geofenceLogic");
+  const home = { id: "id-home", coords: { latitude: 32.1, longitude: 34.8, radius: 200 } };
+  // ~111 m per 0.001 degrees of latitude
+  const at = (dLat: number, accuracy: number | null = 10) => ({
+    latitude: 32.1 + dLat,
+    longitude: 34.8,
+    accuracy,
+  });
+
+  test("inside the place's radius: that place", () => {
+    expect(locationAfterPlaceChange("unknown", home, at(0))).toBe("id-home");
+    expect(locationAfterPlaceChange("id-gym", home, at(0.0015))).toBe("id-home"); // ~170 m
+  });
+
+  test("clearly outside while it was selected: Not at a place", () => {
+    expect(locationAfterPlaceChange("id-home", home, at(0.003))).toBe("unknown"); // ~330 m
+  });
+
+  test("outside but within the fix's accuracy: unchanged", () => {
+    expect(locationAfterPlaceChange("id-home", home, at(0.0025, 100))).toBe("id-home"); // ~280 m ± 100
+  });
+
+  test("outside and another place selected: unchanged", () => {
+    expect(locationAfterPlaceChange("id-gym", home, at(0.003))).toBe("id-gym");
+  });
+
+  test("no position or no location for the place: unchanged", () => {
+    expect(locationAfterPlaceChange("id-gym", home, null)).toBe("id-gym");
+    expect(locationAfterPlaceChange("id-gym", { id: "id-home", coords: null }, at(0))).toBe("id-gym");
+  });
+});

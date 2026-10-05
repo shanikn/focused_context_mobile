@@ -1,5 +1,4 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 
 import { getNotes } from "../api/notes";
@@ -31,6 +30,7 @@ import {
 import { Note } from "../types/notes";
 import { syncGeofencing } from "./geofence";
 import { getGrantedPermissions } from "./locationPermissions";
+import { quickFix } from "./currentPosition";
 
 // Errand alerts near any store of the right type. See lib/storeAlerts.ts for
 // how it stays cheap on battery: geofences only, and a 1 km "refresh" fence
@@ -87,18 +87,11 @@ async function isActive(): Promise<boolean> {
   );
 }
 
-// the phone's recent location if it has one (free), else one network-level fix
+// the phone's recent location if it has one (free), else one Balanced fix
+// with a timeout; finding stores 2 km around doesn't need more
 async function currentPosition(): Promise<LatLon | null> {
-  try {
-    const last = await Location.getLastKnownPositionAsync({
-      maxAge: LAST_KNOWN_MAX_AGE_MS,
-      requiredAccuracy: LAST_KNOWN_ACCURACY_M,
-    });
-    const fix = last ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
-    return { latitude: fix.coords.latitude, longitude: fix.coords.longitude };
-  } catch {
-    return null;
-  }
+  const fix = await quickFix({ maxAgeMs: LAST_KNOWN_MAX_AGE_MS, maxAccuracyM: LAST_KNOWN_ACCURACY_M });
+  return fix ? { latitude: fix.latitude, longitude: fix.longitude } : null;
 }
 
 // only what an alert needs

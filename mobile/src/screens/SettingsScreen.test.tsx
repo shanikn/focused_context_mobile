@@ -13,6 +13,7 @@ jest.mock("@react-navigation/native", () => {
 });
 jest.mock("expo-location", () => ({
   getCurrentPositionAsync: jest.fn(),
+  getLastKnownPositionAsync: jest.fn().mockResolvedValue(null),
   Accuracy: { Balanced: 3 },
 }));
 jest.mock("firebase/auth", () => ({ signOut: jest.fn().mockResolvedValue(undefined) }));
@@ -61,8 +62,8 @@ jest.mock("../components/LocationPermissionFlow", () => ({
 jest.mock("../components/CategoryColorModal", () => () => null);
 jest.mock("../components/AddressSearchModal", () => {
   const { View } = require("react-native");
-  return (props: { visible: boolean; placeName: string }) =>
-    props.visible ? <View testID="address-search" accessibilityLabel={props.placeName} /> : null;
+  return (props: { visible: boolean; placeName: string; onSave: unknown }) =>
+    props.visible ? <View testID="address-search" accessibilityLabel={props.placeName} onSave={props.onSave} /> : null;
 });
 
 function allText(node: ReactTestInstance): string {
@@ -290,4 +291,149 @@ test("Store alerts for errands: on by default; turning it off saves and re-syncs
   expect(setStoreAlertsEnabled).toHaveBeenCalledWith(false);
   expect(syncStoreAlerts).toHaveBeenCalled();
   expect(toggle().props.value).toBe(false);
+});
+
+describe("current location: fast, and Where you are now follows place changes", () => {
+  const Location = require("expo-location");
+  const { getReminderLocation } = jest.requireMock("../lib/reminderPrefs");
+  const lastKnown = Location.getLastKnownPositionAsync as jest.Mock;
+  const current = Location.getCurrentPositionAsync as jest.Mock;
+  const A = { latitude: 32.1, longitude: 34.8 };
+  // ~111 m per 0.001 degrees of latitude
+  const near = (dLat: number) => ({ latitude: A.latitude + dLat, longitude: A.longitude });
+  const fix = (p: { latitude: number; longitude: number }, accuracy = 15) => ({
+    coords: { ...p, accuracy },
+    timestamp: Date.now(),
+  });
+  let stored: string;
+
+  beforeEach(() => {
+    stored = "unknown";
+    (getReminderLocation as jest.Mock).mockImplementation(async () => stored);
+    (setReminderLocation as jest.Mock).mockImplementation(async (value: string) => {
+      stored = value;
+    });
+    lastKnown.mockResolvedValue(null);
+    current.mockReset();
+  });
+
+  afterEach(() => {
+    (getReminderLocation as jest.Mock).mockResolvedValue("id-home");
+    (setReminderLocation as jest.Mock).mockResolvedValue(undefined);
+    lastKnown.mockResolvedValue(null);
+  });
+
+  async function useCurrentLocationFor(tree: ReactTestRenderer, name: string) {
+    await act(async () => byLabel(tree, `Set location for ${name}`).props.onPress());
+    await pressAlertButton("Use current location");
+  }
+
+  // starts it without waiting for the fix, to see the screen meanwhile
+  // (returns { done } so awaiting this doesn't wait for the fix)
+  async function startUsingCurrentLocationFor(tree: ReactTestRenderer, name: string) {
+    await act(async () => byLabel(tree, `Set location for ${name}`).props.onPress());
+    const button = ((alertSpy.mock.calls.at(-1)?.[2] ?? []) as AlertButton[]).find(
+      (b) => b.text === "Use current location"
+    )!;
+    const done = Promise.resolve(button.onPress!() as unknown as Promise<void>);
+    // let it get as far as waiting for the fix
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    return { done };
+  }
+
+  const coordsOf = async (id: string) => (await getAllCoords())[id];
+  const selected = (tree: ReactTestRenderer, label: string) => byLabel(tree, label).props.accessibilityState.selected;
+
+  test("a recent last known position saves instantly, then a fresh fix refines it", async () => {
+    lastKnown.mockResolvedValue(fix(A));
+    let refine!: (value: unknown) => void;
+    current.mockReturnValue(new Promise((resolve) => (refine = resolve)));
+    const tree = await renderScreen();
+    await useCurrentLocationFor(tree, "Gym");
+    // saved before the fresh fix arrived
+    expect(await coordsOf("id-gym")).toMatchObject(A);
+    expect(selected(tree, "Gym")).toBe(true);
+    await act(async () => refine(fix(near(0.0005)))); // ~55 m away: better fix
+    expect((await coordsOf("id-gym")).latitude).toBeCloseTo(A.latitude + 0.0005, 6);
+  });
+
+  test("a refined fix within a few meters doesn't re-save", async () => {
+    lastKnown.mockResolvedValue(fix(A));
+    current.mockResolvedValue(fix(near(0.0001))); // ~11 m
+    const tree = await renderScreen();
+    (syncGeofencing as jest.Mock).mockClear();
+    await useCurrentLocationFor(tree, "Gym");
+    expect(await coordsOf("id-gym")).toMatchObject(A);
+    expect(syncGeofencing).toHaveBeenCalledTimes(1);
+  });
+
+  test("no recent position: a small 'Locating…' state that doesn't block the other places", async () => {
+    let resolveFix!: (value: unknown) => void;
+    current.mockReturnValue(new Promise((resolve) => (resolveFix = resolve)));
+    const tree = await renderScreen();
+    const { done } = await startUsingCurrentLocationFor(tree, "Gym");
+    expect(allText(tree.root)).toContain("Locating…");
+    expect(byLabel(tree, "Set location for Home").props.disabled).toBeFalsy();
+    expect(byLabel(tree, "Home options").props.disabled).toBeFalsy();
+    await act(async () => {
+      resolveFix(fix(A));
+      await done;
+    });
+    expect(allText(tree.root)).not.toContain("Locating…");
+    expect(await coordsOf("id-gym")).toMatchObject(A);
+  });
+
+  test("no position at all: a message, nothing saved", async () => {
+    current.mockRejectedValue(new Error("location off"));
+    const tree = await renderScreen();
+    await useCurrentLocationFor(tree, "Gym");
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Couldn't get your location");
+    expect(await coordsOf("id-gym")).toBeUndefined();
+    expect(allText(tree.root)).not.toContain("Locating…");
+  });
+
+  test("remove Home -> Not at a place; set Home again at my current location -> Home again", async () => {
+    await setPlaceCoords("id-home", A);
+    stored = "id-home";
+    lastKnown.mockResolvedValue(fix(A));
+    current.mockResolvedValue(fix(A));
+    const tree = await renderScreen();
+    await act(async () => byLabel(tree, "Remove place Home").props.onPress());
+    await pressAlertButton("Remove");
+    expect(selected(tree, "Not at a place")).toBe(true);
+    await useCurrentLocationFor(tree, "Home");
+    expect(selected(tree, "Home")).toBe(true);
+    expect(stored).toBe("id-home");
+  });
+
+  test("an address that includes where I am selects that place; one far away doesn't", async () => {
+    lastKnown.mockResolvedValue(fix(A));
+    const tree = await renderScreen();
+    await act(async () => byLabel(tree, "Set location for Gym").props.onPress());
+    await pressAlertButton("Search address");
+    await act(async () =>
+      tree.root.findByProps({ testID: "address-search" }).props.onSave({ ...near(0.001), label: "Gym St 1" })
+    );
+    expect(selected(tree, "Gym")).toBe(true); // ~110 m, inside 200 m
+
+    await act(async () => byLabel(tree, "Set location for Home").props.onPress());
+    await pressAlertButton("Search address");
+    await act(async () =>
+      tree.root.findByProps({ testID: "address-search" }).props.onSave({ ...near(0.02), label: "Far 9" })
+    );
+    expect(selected(tree, "Gym")).toBe(true); // Home is ~2 km away
+  });
+
+  test("a bigger radius that now includes me selects the place; a smaller one that leaves me out unselects it", async () => {
+    await setPlaceCoords("id-home", A, 200);
+    lastKnown.mockResolvedValue(fix(near(0.0027))); // ~300 m from Home
+    const tree = await renderScreen();
+    expect(selected(tree, "Home")).toBe(false);
+    await act(async () => byLabel(tree, "Home radius 400 m").props.onPress());
+    expect(selected(tree, "Home")).toBe(true);
+    await act(async () => byLabel(tree, "Home radius 200 m").props.onPress());
+    expect(selected(tree, "Not at a place")).toBe(true);
+  });
 });
