@@ -6,6 +6,8 @@ an identifying User-Agent, at most one request per second for the whole
 server, and a short cache of repeated queries.
 """
 import json
+import logging
+import os
 import re
 import threading
 import time
@@ -13,6 +15,8 @@ from typing import Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+logger = logging.getLogger(__name__)
 
 SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "FocusedContext/1.0 (university project; contextmind-api.azurewebsites.net)"
@@ -163,13 +167,115 @@ def _remember(key: str, results: list):
     _cache[key] = (_now(), results)
 
 
-def search(query: str) -> list:
-    """Up to 5 results as {label, latitude, longitude}. An English query that
-    finds nothing is retried with up to MAX_VARIANT_TRIES looser variants.
-    Raises GeocodeError."""
+# ---- Google Places API (New) Text Search, when GOOGLE_MAPS_API_KEY is set ----
+#
+# The key is read from the environment on each search, sent only in a request
+# header to Google, and never logged or returned to the phone.
+
+GOOGLE_URL = "https://places.googleapis.com/v1/places:searchText"
+GOOGLE_FIELD_MASK = "places.displayName,places.formattedAddress,places.location"
+GOOGLE_BIAS_RADIUS_M = 30000.0  # prefer results within ~30 km of the user (Google allows up to 50 km)
+GOOGLE_TIMEOUT_SECONDS = 8
+
+
+class _GoogleFailed(Exception):
+    def __init__(self, kind: str, status: Optional[int] = None):
+        super().__init__(kind)
+        self.kind = kind
+        self.status = status
+
+
+def _google_key() -> str:
+    return os.getenv("GOOGLE_MAPS_API_KEY", "").strip()
+
+
+def _google_label(place: dict) -> str:
+    name = ((place.get("displayName") or {}).get("text") or "").strip()
+    address = (place.get("formattedAddress") or "").strip()
+    if name and address and name not in address:
+        return f"{name}, {address}"
+    return address or name
+
+
+def _parse_google(raw) -> list:
+    if not isinstance(raw, dict) or not isinstance(raw.get("places", []), list):
+        raise _GoogleFailed("bad_response")
+    results = []
+    for place in raw.get("places", []):
+        try:
+            loc = place["location"]
+            lat, lon = float(loc["latitude"]), float(loc["longitude"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        label = _google_label(place)
+        if label and abs(lat) <= 90 and abs(lon) <= 180:
+            results.append({"label": label, "latitude": lat, "longitude": lon})
+    return results[:MAX_RESULTS]
+
+
+def _fetch_google(query: str, lat: Optional[float], lon: Optional[float], key: str) -> list:
+    body = {"textQuery": query, "languageCode": "he", "regionCode": "IL", "pageSize": MAX_RESULTS}
+    if lat is not None and lon is not None:
+        body["locationBias"] = {
+            "circle": {"center": {"latitude": lat, "longitude": lon}, "radius": GOOGLE_BIAS_RADIUS_M}
+        }
+    request = Request(
+        GOOGLE_URL,
+        data=json.dumps(body).encode("utf-8"),
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": key,
+            "X-Goog-FieldMask": GOOGLE_FIELD_MASK,
+        },
+    )
+    try:
+        with urlopen(request, timeout=GOOGLE_TIMEOUT_SECONDS) as response:
+            raw = response.read()
+    except HTTPError as e:
+        raise _GoogleFailed("http", e.code)
+    except (URLError, TimeoutError, OSError):
+        raise _GoogleFailed("network")
+    try:
+        return _parse_google(json.loads(raw))
+    except ValueError:
+        raise _GoogleFailed("bad_response")
+
+
+def _google_lookup(cleaned: str, lat: Optional[float], lon: Optional[float], key: str) -> list:
+    # the same words near the same spot (~1 km) give the same answer
+    area = (round(lat, 2), round(lon, 2)) if lat is not None and lon is not None else None
+    cache_key = ("google", cleaned.lower(), area)
+    with _lock:
+        hit = _cache.get(cache_key)
+        if hit and _now() - hit[0] < CACHE_TTL_SECONDS:
+            return hit[1]
+    results = _fetch_google(cleaned, lat, lon, key)
+    with _lock:
+        _remember(cache_key, results)
+    return results
+
+
+def search(query: str, lat: Optional[float] = None, lon: Optional[float] = None) -> list:
+    """Up to 5 results as {label, latitude, longitude}.
+
+    With GOOGLE_MAPS_API_KEY set, Google Places Text Search answers first
+    (Hebrew, Israel, biased toward lat/lon when given); if it fails or finds
+    nothing, Nominatim does. "lat,lon" lookups always go to Nominatim, which
+    answers them with the nearest address. An English query Nominatim can't
+    find is retried with up to MAX_VARIANT_TRIES looser variants.
+    Raises GeocodeError (Nominatim's)."""
     cleaned = clean_query(query)
     if not cleaned:
         return []
+    key = _google_key()
+    if key and not _COORDINATES.match(cleaned):
+        try:
+            results = _google_lookup(cleaned, lat, lon, key)
+            if results:
+                return results
+        except _GoogleFailed as e:
+            logger.warning("Google Places search failed (%s %s); using Nominatim", e.kind, e.status or "")
     results = _lookup(cleaned)
     if results:
         return results

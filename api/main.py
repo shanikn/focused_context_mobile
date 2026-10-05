@@ -297,12 +297,18 @@ _GEOCODE_STATUS = {"rate_limited": 429, "network": 504}
 
 
 @app.get("/places/search")
-def search_places(q: str, authorization: Optional[str] = Header(None)):
-    """Top 5 address matches for q, via Nominatim (coordinates are only
-    returned to the phone, never stored here)."""
+def search_places(
+    q: str,
+    lat: Optional[float] = Query(None, ge=-90, le=90),
+    lon: Optional[float] = Query(None, ge=-180, le=180),
+    authorization: Optional[str] = Header(None),
+):
+    """Top 5 address matches for q: Google Places when the server has a key
+    (biased toward lat/lon if sent), else Nominatim. Coordinates are only
+    returned to the phone, never stored here."""
     require_user_id(authorization)
     try:
-        return geocode.search(q)
+        return geocode.search(q, lat=lat, lon=lon)
     except geocode.GeocodeError as e:
         logging.warning("Geocode failed: %s", e)
         raise HTTPException(
