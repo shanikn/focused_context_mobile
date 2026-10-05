@@ -14,7 +14,13 @@ logger = logging.getLogger(__name__)
 #   event  - an appointment, meeting, exam...
 KINDS = ("todo", "errand", "idea", "event")
 
-idea_words = ["idea", "ideas", "what if", "brainstorm", "random thought", "someday"]
+idea_words = [
+    "idea", "ideas", "feature idea", "what if", "brainstorm", "random thought", "someday",
+    "would be nice", "would be cool", "it'd be nice", "it'd be cool", "could add", "how about",
+]
+# hedges: an idea only when the note isn't also a concrete event or errand
+# ("maybe buy milk" is still an errand)
+weak_idea_words = ["maybe", "consider"]
 event_words = [
     "appointment", "meeting", "exam", "exams", "quiz", "midterm", "dentist", "doctor",
     "interview", "lecture", "class", "seminar", "conference", "webinar", "party",
@@ -52,15 +58,17 @@ def _has_word(content, keyword):
 
 
 def categorize(content: str) -> str:
-    """One of KINDS. Order: an explicit idea, then an event, then an errand;
-    everything else is a to-do."""
-    lower = content.lower()
+    """One of KINDS. Order: an explicit idea, then an event, then an errand,
+    then a hedged idea ("maybe", "consider"); everything else is a to-do."""
+    lower = content.lower().replace("’", "'")  # curly apostrophe: "it’d"
     if any(_has_word(lower, w) for w in idea_words):
         result = "idea"
     elif any(_has_word(lower, w) for w in event_words):
         result = "event"
     elif any(_has_word(lower, w) for w in errand) or weak_errand.search(lower):
         result = "errand"
+    elif any(_has_word(lower, w) for w in weak_idea_words):
+        result = "idea"
     else:
         result = "todo"
     logger.debug("categorize(%s) -> %s", content[:30], result)

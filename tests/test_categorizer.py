@@ -41,6 +41,42 @@ def test_idea():
     assert categorize("brainstorm names for the project") == "idea"
 
 
+def test_wishes_and_suggestions_are_ideas():
+    assert categorize("A dark mode would be nice in Smart Notes app") == "idea"
+    assert categorize("it'd be cool to sync with the calendar") == "idea"
+    assert categorize("It’d be cool to have widgets") == "idea"  # curly apostrophe
+    assert categorize("Could add voice notes") == "idea"
+    assert categorize("feature idea: share a folder") == "idea"
+    assert categorize("someday learn the piano") == "idea"
+    assert categorize("how about a weekly summary?") == "idea"
+    assert categorize("what if the app learned my routine") == "idea"
+    assert categorize("maybe a darker green for the icon") == "idea"
+    assert categorize("consider a tablet layout") == "idea"
+
+
+def test_ordinary_tasks_stay_todo_or_errand():
+    assert categorize("buy milk") == "errand"
+    assert categorize("call mom") == "todo"
+    assert categorize("Remember to call mom") == "todo"
+    assert categorize("get carrots") == "errand"
+    assert categorize("pay rent") == "todo"
+    assert categorize("Dentist appointment at 3pm") == "event"
+
+
+def test_maybe_and_consider_are_weak():
+    # a concrete errand or event wins over a hedge word
+    assert categorize("maybe buy milk") == "errand"
+    assert categorize("consider going to the store") == "errand"
+    assert categorize("maybe the dentist on Sunday") == "event"
+    # the strong phrases win even then
+    assert categorize("would be nice to buy a new couch") == "idea"
+
+
+def test_idea_phrases_match_whole_words():
+    assert categorize("pick up Maybelline mascara") == "errand"
+    assert categorize("reconsider the gym membership") == "todo"
+
+
 def test_event():
     assert categorize("Dentist appointment at 3pm") == "event"
     assert categorize("meeting with Dana tomorrow") == "event"
