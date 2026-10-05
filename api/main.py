@@ -16,6 +16,7 @@ from notepad import (  # noqa: E402
 from agents.pipeline import (  # noqa: E402
     enrich_note, full_delete, process_feedback,
     get_reminders, process_all_notes, reminder_time_source, store_type, sync_vectors,
+    delete_user_data,
     reenrich_user_notes, untag_place,
 )
 from agents.ranking_policy import FEEDBACK_ACTIONS  # noqa: E402
@@ -24,7 +25,7 @@ from places import (  # noqa: E402
     create_place, delete_place, get_places, place_to_dict, resolve_place,
     update_place,
 )
-from auth import get_user_id  # noqa: E402
+from auth import FirebaseDeleteError, delete_firebase_user, get_user_id  # noqa: E402
 import geocode  # noqa: E402
 import nearby  # noqa: E402
 import maps_links  # noqa: E402
@@ -418,6 +419,24 @@ def remove_place(place_id: str, authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=404, detail="Place not found")
     untag_place(user_id, place_id)
     return {"message": "place deleted"}
+
+
+# ---- account deletion (required by Google Play) ----
+
+@app.delete("/account")
+def delete_account(authorization: Optional[str] = Header(None)):
+    """Delete everything of the signed-in user (notes with their feedback,
+    places, vectors), then the Firebase user. Safe to repeat: data first, so
+    if Firebase fails the data is already gone and a retry finishes the job."""
+    user_id = require_user_id(authorization)
+    deleted = delete_user_data(user_id)
+    try:
+        firebase_user = delete_firebase_user(user_id)
+    except FirebaseDeleteError as e:
+        logging.warning("Deleting the Firebase user failed: %s", e)
+        raise HTTPException(status_code=502, detail={"kind": "firebase", "deleted": deleted})
+    logging.info("Account deleted (firebase: %s)", firebase_user)
+    return {"deleted": deleted, "firebase_user": firebase_user}
 
 
 # submit feedback on a note

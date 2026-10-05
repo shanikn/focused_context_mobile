@@ -138,6 +138,17 @@ def get_note_by_id(note_id: str, user_id: Optional[str]):
     return notes_collection.find_one({"_id": note_id, "user_id": user_id})
 
 
+def delete_all_notes(user_id: str) -> list:
+    """Every note of this user (account deletion). Feedback lives on the
+    notes, so it goes with them. Returns the deleted note ids."""
+    if not user_id:
+        raise ValueError("a user id is required")
+    ids = [d["_id"] for d in notes_collection.find({"user_id": user_id}, {"_id": 1})]
+    if ids:
+        notes_collection.delete_many({"user_id": user_id, "_id": {"$in": ids}})
+    return ids
+
+
 def ensure_note_indexes():
     """Idempotent: every request looks notes up by owner."""
     notes_collection.create_index("user_id")

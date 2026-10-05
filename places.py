@@ -135,3 +135,10 @@ def resolve_place(user_id: Optional[str], location: Optional[str]) -> Optional[P
         if p.name.lower() == location.strip().lower():
             return p
     return None
+
+
+def delete_all_places(user_id: str) -> int:
+    """Every place of this user (account deletion)."""
+    if not user_id:
+        raise ValueError("a user id is required")
+    return places_collection.delete_many({"user_id": user_id}).deleted_count

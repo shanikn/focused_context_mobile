@@ -55,3 +55,23 @@ def get_user_id(authorization_header: Optional[str]) -> Optional[str]:
     except Exception as e:
         logger.debug("Token verification failed: %s", e)
         return None
+
+
+class FirebaseDeleteError(Exception):
+    """Deleting the Firebase user failed (network, permissions...)."""
+
+
+def delete_firebase_user(uid: str) -> str:
+    """Delete the Firebase Auth user. Returns "deleted", "not_found" (already
+    gone, so a retry is fine) or "skipped" (no admin credentials, local dev).
+    Raises FirebaseDeleteError otherwise."""
+    if not firebase_admin._apps:
+        logger.warning("No Firebase admin credentials: the Firebase user was not deleted")
+        return "skipped"
+    try:
+        auth.delete_user(uid)
+        return "deleted"
+    except auth.UserNotFoundError:
+        return "not_found"
+    except Exception as e:
+        raise FirebaseDeleteError(type(e).__name__)

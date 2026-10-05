@@ -9,10 +9,10 @@ from agents.relevance import get_relevant_notes, collection
 from agents.ranking_policy import apply_feedback
 from notepad import (
     save_note, update_note, delete_note, Note, get_all_notes, dict_to_note,
-    get_every_users_notes,
+    get_every_users_notes, delete_all_notes,
 )
 from typing import Optional
-from places import get_places
+from places import delete_all_places, get_places
 
 logger = logging.getLogger(__name__)
 
@@ -249,3 +249,20 @@ def sync_vectors():
     logger.info(
         "Vectors synced: %d added, %d owners set, %d orphans removed", added, fixed, len(orphans)
     )
+
+
+def delete_user_data(user_id: str) -> dict:
+    """Everything stored for this user: notes (with their feedback), places
+    and vectors. Never for an empty id (that would mean unowned notes)."""
+    if not user_id:
+        raise ValueError("a user id is required")
+    note_ids = delete_all_notes(user_id)
+    places = delete_all_places(user_id)
+    # vectors tagged with the owner, and any old untagged ones of these notes
+    tagged = collection.get(where={"user_id": user_id})["ids"]
+    untagged = collection.get(ids=note_ids)["ids"] if note_ids else []
+    vectors = sorted(set(tagged) | set(untagged))
+    if vectors:
+        collection.delete(ids=vectors)
+    logger.info("Account data deleted: %d notes, %d places, %d vectors", len(note_ids), places, len(vectors))
+    return {"notes": len(note_ids), "places": places, "vectors": len(vectors)}

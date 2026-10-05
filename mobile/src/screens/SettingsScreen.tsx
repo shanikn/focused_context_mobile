@@ -51,6 +51,8 @@ import { AddressResult } from "../lib/nominatim";
 import PlaceEditorModal from "../components/PlaceEditorModal";
 import MapPickerModal from "../components/MapPickerModal";
 import PasteLocationModal from "../components/PasteLocationModal";
+import DeleteAccountModal from "../components/DeleteAccountModal";
+import { deleteAccountAndSignOut } from "../services/accountDeletion";
 import LocationWaysSheet, { LocationWay } from "../components/LocationWaysSheet";
 import { initialMapView, MapView } from "../lib/mapPick";
 import { LatLon } from "../lib/geo";
@@ -108,6 +110,7 @@ export default function SettingsScreen() {
   const [mapFor, setMapFor] = useState<{ place: UserPlace; view: MapView } | null>(null);
   const [waysFor, setWaysFor] = useState<UserPlace | null>(null);
   const [pasteFor, setPasteFor] = useState<UserPlace | null>(null);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [categoryColors, setCategoryColors] = useState<CategoryColors>(DEFAULT_CATEGORY_COLORS);
   const [colorFor, setColorFor] = useState<Category | null>(null);
 
@@ -745,6 +748,7 @@ export default function SettingsScreen() {
           </Text>
           <View style={styles.signOutRow}>
             <TextButton label="Sign out" destructive onPress={handleSignOut} />
+            <TextButton label="Delete account" destructive onPress={() => setDeletingAccount(true)} />
           </View>
         </Card>
       </ScrollView>
@@ -775,6 +779,12 @@ export default function SettingsScreen() {
           onCancel={() => setMapFor(null)}
         />
       )}
+      <DeleteAccountModal
+        visible={deletingAccount}
+        email={user?.email ?? null}
+        onConfirm={deleteAccountAndSignOut}
+        onCancel={() => setDeletingAccount(false)}
+      />
       <LocationWaysSheet placeName={waysFor?.name ?? null} onChoose={handleLocationWay} onClose={() => setWaysFor(null)} />
       <PasteLocationModal
         visible={pasteFor !== null}

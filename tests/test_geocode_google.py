@@ -202,16 +202,19 @@ def test_endpoint_rejects_bad_coordinates(upstream, params):
 
 def test_key_is_not_in_the_repository():
     import pathlib
+    import re
     import subprocess
     root = pathlib.Path(__file__).resolve().parents[1]
     tracked = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True).stdout.split()
     # Firebase's client config holds the Firebase *client* key, which is public
     # by design (it ships inside the app); the server's Maps key must not be anywhere
     firebase_client_config = {"mobile/google-services.json", "mobile/src/config/firebase.ts"}
+    # a Google API key: "AIza" and 35 more characters (built here so this file doesn't match itself)
+    key_shape = re.compile("AI" + "za" + "[0-9A-Za-z_-]{35}")
     for name in tracked:
         if name in firebase_client_config:
             continue
         path = root / name
         if path.suffix in {".py", ".ts", ".tsx", ".json", ".md", ".yml", ".yaml", ".env", ".txt"} and path.is_file():
             text = path.read_text(encoding="utf-8", errors="ignore")
-            assert "AIza" not in text, f"something like a Google API key in {name}"
+            assert not key_shape.search(text), f"something like a Google API key in {name}"

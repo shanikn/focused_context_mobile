@@ -68,6 +68,12 @@ jest.mock("../components/MapPickerModal", () => {
     ) : null;
 });
 jest.mock("../services/addressSearch", () => ({ findAddress: jest.fn().mockResolvedValue([]) }));
+jest.mock("../components/DeleteAccountModal", () => {
+  const { View } = require("react-native");
+  return (props: { visible: boolean; email: string; onConfirm: unknown }) =>
+    props.visible ? <View testID="delete-account" accessibilityLabel={props.email} onConfirm={props.onConfirm} /> : null;
+});
+jest.mock("../services/accountDeletion", () => ({ deleteAccountAndSignOut: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../components/PasteLocationModal", () => {
   const { View } = require("react-native");
   return (props: { visible: boolean; placeName: string; onSave: unknown }) =>
@@ -576,4 +582,15 @@ describe("Paste coordinates or Google Maps link", () => {
     expect(setReminderLocation).toHaveBeenCalledWith("id-gym"); // I'm right there
     expect(allText(tree.root)).toContain("Begin Rd 1, Ramat Gan · 200 m");
   });
+});
+
+test("Delete account: opens the confirm dialog, which deletes and signs out", async () => {
+  const { deleteAccountAndSignOut } = jest.requireMock("../services/accountDeletion");
+  const tree = await renderScreen();
+  expect(tree.root.findAll((n) => n.props.testID === "delete-account")).toHaveLength(0);
+  await act(async () => byLabel(tree, "Delete account").props.onPress());
+  const dialog = tree.root.findByProps({ testID: "delete-account" });
+  expect(dialog.props.accessibilityLabel).toBe("shani@example.com");
+  await act(async () => dialog.props.onConfirm());
+  expect(deleteAccountAndSignOut).toHaveBeenCalledTimes(1);
 });
