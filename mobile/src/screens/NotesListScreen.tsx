@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   SectionList,
@@ -20,7 +20,7 @@ import NoteCard from "../components/NoteCard";
 import { NotesStackParamList } from "../../App";
 import { addCustomList, getCustomLists, removeCustomList } from "../lib/listPrefs";
 import { ALL, GENERAL, folderTabs } from "../lib/folderOrder";
-import { groupNotes } from "../lib/noteSections";
+import { getNotesView, NotesView, notesViewSections, setNotesView } from "../lib/notesView";
 import { currentPlaceLabel } from "../lib/noteCardInfo";
 import { getReminderLocation } from "../lib/reminderPrefs";
 import { syncScheduledReminders } from "../services/scheduledReminders";
@@ -59,6 +59,16 @@ export default function NotesListScreen() {
   const [newListName, setNewListName] = useState("");
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>(ALL_CATEGORIES);
+  const [view, setView] = useState<NotesView>("recent");
+
+  useEffect(() => {
+    getNotesView().then(setView);
+  }, []);
+
+  const chooseView = (next: NotesView) => {
+    setView(next);
+    setNotesView(next);
+  };
 
   // All, then General, then the other folders alphabetically (no re-sorting here)
   const listNames = useMemo(() => folderTabs(notes, customLists), [notes, customLists]);
@@ -75,9 +85,10 @@ export default function NotesListScreen() {
     setCategoryFilter(ALL_CATEGORIES);
   };
 
+  // Recent: one list, newest first; Upcoming: the date sections
   const sections = useMemo(
-    () => groupNotes(filteredNotes, new Date()).map((s) => ({ ...s, data: s.notes })),
-    [filteredNotes]
+    () => notesViewSections(view, filteredNotes, new Date()).map((s) => ({ ...s, data: s.notes })),
+    [view, filteredNotes]
   );
 
   const fetchNotes = useCallback(async () => {
@@ -203,6 +214,31 @@ export default function NotesListScreen() {
       </View>
 
       {notes.length > 0 && (
+        <View style={styles.viewToggle} accessibilityRole="tablist">
+          {(
+            [
+              ["recent", "Recent"],
+              ["upcoming", "Upcoming"],
+            ] as const
+          ).map(([value, label]) => {
+            const selected = view === value;
+            return (
+              <TouchableOpacity
+                key={value}
+                style={[styles.viewOption, selected && styles.viewOptionSelected]}
+                onPress={() => chooseView(value)}
+                accessibilityRole="tab"
+                accessibilityLabel={label}
+                accessibilityState={{ selected }}
+              >
+                <Text style={[styles.viewOptionText, selected && styles.viewOptionTextSelected]}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      {notes.length > 0 && (
         <View style={styles.searchWrap}>
           <View style={styles.search}>
             <Ionicons name="search-outline" size={18} color={colors.textMuted} />
@@ -292,9 +328,9 @@ export default function NotesListScreen() {
               sections={sections}
               keyExtractor={(item) => item._id}
               stickySectionHeadersEnabled={false}
-              renderSectionHeader={({ section }) => (
-                <SectionLabel title={section.title} style={styles.sectionLabel} />
-              )}
+              renderSectionHeader={({ section }) =>
+                section.title ? <SectionLabel title={section.title} style={styles.sectionLabel} /> : null
+              }
               renderItem={({ item }) => (
                 <NoteCard
                   note={item}
@@ -305,7 +341,7 @@ export default function NotesListScreen() {
                 />
               )}
               ItemSeparatorComponent={() => <View style={{ height: spacing.noteGap }} />}
-              contentContainerStyle={styles.listContent}
+              contentContainerStyle={[styles.listContent, view === "recent" && styles.recentListContent]}
               refreshing={refreshing}
               onRefresh={handleRefresh}
             />
@@ -389,6 +425,24 @@ const makeStyles = ({ colors, type }: Theme) =>
     alignItems: "center",
     justifyContent: "center",
   },
+  viewToggle: {
+    flexDirection: "row",
+    marginHorizontal: spacing.screen,
+    marginBottom: 10,
+    padding: 4,
+    borderRadius: radius.chip,
+    backgroundColor: colors.primarySoft,
+  },
+  viewOption: {
+    flex: 1,
+    height: 40,
+    borderRadius: radius.chip,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  viewOptionSelected: { backgroundColor: colors.primary },
+  viewOptionText: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.primaryDark },
+  viewOptionTextSelected: { color: colors.onPrimary },
   chips: { flexGrow: 0, paddingBottom: 4 },
   categoryChips: { paddingTop: 8 },
   searchWrap: { paddingHorizontal: spacing.screen, paddingBottom: 10 },
@@ -428,6 +482,8 @@ const makeStyles = ({ colors, type }: Theme) =>
     // keep the last card clear of the FAB
     paddingBottom: FAB_SIZE + FAB_MARGIN * 2,
   },
+  // no section header above the first card in Recent
+  recentListContent: { paddingTop: 12 },
   fab: {
     position: "absolute",
     right: FAB_MARGIN,

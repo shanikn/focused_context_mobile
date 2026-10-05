@@ -1,13 +1,39 @@
 import React from "react";
 import { Text, TextInput, TouchableOpacity } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import TestRenderer, { act, ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
 import NotesListScreen from "./NotesListScreen";
 import { Note } from "../types/notes";
 
+// created b (oldest), c, a (newest); a is due today, the others are smart alerts
 const NOTES = [
-  { _id: "a", content: "Buy milk", category: "errand", list_name: "General", contexts: [], reminders_enabled: true },
-  { _id: "b", content: "Study for the exam", category: "task", list_name: "Uni", contexts: [], reminders_enabled: true },
-  { _id: "c", content: "לקנות חלב", category: "errand", list_name: "Uni", contexts: [], reminders_enabled: true },
+  {
+    _id: "a",
+    content: "Buy milk",
+    category: "errand",
+    list_name: "General",
+    contexts: ["18:00"],
+    reminders_enabled: true,
+    created_at: "2026-10-04T09:00:00",
+  },
+  {
+    _id: "b",
+    content: "Study for the exam",
+    category: "task",
+    list_name: "Uni",
+    contexts: [],
+    reminders_enabled: true,
+    created_at: "2026-09-01T09:00:00",
+  },
+  {
+    _id: "c",
+    content: "לקנות חלב",
+    category: "errand",
+    list_name: "Uni",
+    contexts: [],
+    reminders_enabled: true,
+    created_at: "2026-10-01T09:00:00",
+  },
 ] as unknown as Note[];
 
 jest.mock("@react-navigation/native", () => {
@@ -117,4 +143,56 @@ test("no matches: 'No matching notes' and a way to clear the search and filter",
   expect(allText(tree)).toContain("No matching notes");
   await act(async () => byLabel(tree, "Clear search and filter").props.onPress());
   expect(shownNotes(tree)).toHaveLength(3);
+});
+
+describe("Recent / Upcoming toggle", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  const headers = (tree: ReactTestRenderer) =>
+    tree.root
+      .findAll((n) => n.props.accessibilityRole === "header" && typeof n.type === "string")
+      .map((n) => [n.props.children].flat().join(""));
+
+  test("Recent by default: one list, newest created first, no section headers", async () => {
+    const tree = await renderScreen();
+    expect(byLabel(tree, "Recent").props.accessibilityState).toEqual({ selected: true });
+    expect(byLabel(tree, "Upcoming").props.accessibilityState).toEqual({ selected: false });
+    expect(shownNotes(tree)).toEqual(["Buy milk", "לקנות חלב", "Study for the exam"]);
+    expect(headers(tree)).toEqual([]);
+  });
+
+  test("Upcoming shows the date sections", async () => {
+    const tree = await renderScreen();
+    await act(async () => byLabel(tree, "Upcoming").props.onPress());
+    expect(byLabel(tree, "Upcoming").props.accessibilityState).toEqual({ selected: true });
+    expect(headers(tree)).toEqual(["Today", "Smart alerts"]);
+    expect(shownNotes(tree)).toEqual(["Buy milk", "Study for the exam", "לקנות חלב"]);
+  });
+
+  test("the choice is remembered on the phone", async () => {
+    const first = await renderScreen();
+    await act(async () => byLabel(first, "Upcoming").props.onPress());
+    expect(await AsyncStorage.getItem("smartmind.notesView")).toBe("upcoming");
+    await act(async () => first.unmount());
+    const again = await renderScreen();
+    expect(byLabel(again, "Upcoming").props.accessibilityState).toEqual({ selected: true });
+    expect(headers(again)).toEqual(["Today", "Smart alerts"]);
+  });
+
+  test("search, folder tabs and the category filter work in both views", async () => {
+    for (const view of ["Recent", "Upcoming"]) {
+      const tree = await renderScreen();
+      await act(async () => byLabel(tree, view).props.onPress());
+      await act(async () => byLabel(tree, "Errand notes").props.onPress());
+      expect(shownNotes(tree)).toEqual(["Buy milk", "לקנות חלב"]);
+      await act(async () => byLabel(tree, "Uni").props.onPress());
+      expect(shownNotes(tree)).toEqual(["לקנות חלב"]);
+      await act(async () => byLabel(tree, "All").props.onPress());
+      await type(tree, "milk");
+      expect(shownNotes(tree)).toEqual(["Buy milk"]);
+      await act(async () => tree.unmount());
+    }
+  });
 });
