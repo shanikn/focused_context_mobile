@@ -1,16 +1,17 @@
 from agents.ingestion import ingest_note
 from agents.pipeline import (  # noqa: E501
-    process_feedback, process_new_notes, get_reminders, full_delete
+    process_feedback, process_new_notes, get_reminders
 )
 from agents.relevance import collection
-from notepad import save_note, Note, get_note_by_id
+from notepad import save_note, Note
+from tests.support import delete_any, note_doc, update_any  # noqa: E402
 
 
 def test_processor():
     note = Note(content="walk Libby")
     process_new_notes(note)
     assert note.category == "errand"
-    full_delete(note.id)
+    delete_any(note.id)
 
 
 def test_get_reminders():
@@ -28,9 +29,9 @@ def test_get_reminders():
 
     result = get_reminders("walk the dog", "unknown", 18)
     expected_ids = {note1.id, note2.id, note3.id}
-    full_delete(note1.id)
-    full_delete(note2.id)
-    full_delete(note3.id)
+    delete_any(note1.id)
+    delete_any(note2.id)
+    delete_any(note3.id)
     assert all(x.id in expected_ids for x in result)
 
 
@@ -40,7 +41,7 @@ def test_process_feedback_useful():
     ingest_note(note)
     process_feedback(note, "useful")
     assert note.useful_count == 1
-    full_delete(note.id)
+    delete_any(note.id)
 
 
 def test_process_feedback_dismiss():
@@ -49,7 +50,7 @@ def test_process_feedback_dismiss():
     ingest_note(note)
     process_feedback(note, "dismiss")
     assert note.dismissed_count == 1
-    full_delete(note.id)
+    delete_any(note.id)
 
 
 def test_process_feedback_never_show():
@@ -58,7 +59,7 @@ def test_process_feedback_never_show():
     ingest_note(note)
     process_feedback(note, "never show")
     assert note.never_show is True
-    full_delete(note.id)
+    delete_any(note.id)
 
 
 def test_process_feedback_cooldown():
@@ -67,15 +68,15 @@ def test_process_feedback_cooldown():
     ingest_note(note)
     process_feedback(note, "show less")
     assert note.cooldown_until is not None
-    full_delete(note.id)
+    delete_any(note.id)
 
 
 def test_full_delete():
     note = Note(content="walk Libby")
     save_note(note)
     ingest_note(note)
-    full_delete(note.id)
-    assert get_note_by_id(note.id) is None
+    delete_any(note.id)
+    assert note_doc(note.id) is None
 
 
 def test_reminder_time_source():
@@ -138,11 +139,10 @@ def test_ideas_are_never_returned_as_reminders():
     process_new_notes(idea)
     process_new_notes(todo)
     # smart dating may push the default 09:00 to tomorrow; make both due today
-    from notepad import update_note
     for n in (idea, todo):
-        update_note(n.id, {"remind_on_date": None})
+        update_any(n.id, {"remind_on_date": None})
     ids = [n.id for n in get_reminders("home", "home", 9)]
-    full_delete(idea.id)
-    full_delete(todo.id)
+    delete_any(idea.id)
+    delete_any(todo.id)
     assert idea.id not in ids
     assert todo.id in ids

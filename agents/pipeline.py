@@ -8,7 +8,8 @@ from agents.categorizer import (
 from agents.relevance import get_relevant_notes, collection
 from agents.ranking_policy import apply_feedback
 from notepad import (
-    save_note, update_note, delete_note, Note, get_all_notes, dict_to_note
+    save_note, update_note, delete_note, Note, get_all_notes, dict_to_note,
+    get_every_users_notes,
 )
 from typing import Optional
 from places import get_places
@@ -91,7 +92,7 @@ def _adjust_smart_date_for_future(
 
 
 def process_new_notes(note: Note):
-    logger.info("Processing note %s: %s", note.id, note.content[:30])
+    logger.info("Processing note %s", note.id)
     save_note(note)
     enrich_note(note)
 
@@ -155,7 +156,7 @@ def enrich_note(note: Note):
     note.location_value = fields["location_value"]
     note.remind_on_date = fields["remind_on_date"]
     logger.info("Category: %s, contexts: %s", note.category, note.contexts)
-    update_note(note.id, fields)
+    update_note(note.id, fields, note.user_id)
     # ingest after categorization so ChromaDB gets complete metadata
     ingest_note(note)
 
@@ -177,15 +178,19 @@ def process_feedback(note: Note, action: str):
         "dismissed_count": note.dismissed_count,
         "never_show": note.never_show,
         "cooldown_until": note.cooldown_until,
-    })
+    }, note.user_id)
 
 
-def full_delete(note_id: str, user_id: Optional[str] = None) -> bool:
+def full_delete(note_id: str, user_id: Optional[str]) -> bool:
+    """Delete one of this user's notes from MongoDB and ChromaDB. Another
+    user's note is left alone (and its vector too)."""
+    if delete_note(note_id, user_id) == 0:
+        return False
     try:
         collection.delete(ids=[note_id])
     except Exception:
         pass
-    return delete_note(note_id, user_id=user_id) > 0
+    return True
 
 
 def reingest_note(note: Note):
@@ -214,7 +219,7 @@ def untag_place(user_id: Optional[str], place_id: str):
 
 
 def process_all_notes():
-    notes = get_all_notes()
+    notes = get_every_users_notes()
     logger.info("Re-ingesting %d notes into ChromaDB", len(notes))
     for note in notes:
         reingest_note(dict_to_note(note))
@@ -226,7 +231,7 @@ def sync_vectors():
     that have no vector (ChromaDB isn't persisted on Azure), set the owner
     on vectors stored before user_id was, and drop vectors of deleted notes.
     Doesn't change any note."""
-    docs = {d["_id"]: d for d in get_all_notes()}
+    docs = {d["_id"]: d for d in get_every_users_notes()}
     stored = collection.get(include=["metadatas"])
     vectors = dict(zip(stored["ids"], stored["metadatas"]))
     orphans = [i for i in vectors if i not in docs]

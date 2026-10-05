@@ -90,7 +90,7 @@ def plan_migration(user_ids=None) -> list:
 
 def apply_migration(changes: list) -> int:
     for change in changes:
-        update_note(change["note_id"], change["after"])
+        update_note(change["note_id"], change["after"], change["user_id"])
     return len(changes)
 
 

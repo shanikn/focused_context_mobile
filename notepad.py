@@ -8,6 +8,9 @@ import os
 import logging
 
 logger = logging.getLogger(__name__)
+# the driver's debug logs print whole documents (note text); keep them off
+# even when the app logs at DEBUG
+logging.getLogger("pymongo").setLevel(logging.WARNING)
 
 # for mongodb
 load_dotenv()
@@ -108,33 +111,37 @@ def save_note(note: Note):
     notes_collection.insert_one(note_to_dict(note))
 
 
-def get_all_notes(user_id: Optional[str] = None) -> list[dict]:
-    query = {"user_id": user_id} if user_id is not None else {}
-    return list(notes_collection.find(query))
+# Every function below is scoped to one owner: user_id is required and always
+# part of the query. None matches only notes without an owner (old notes),
+# never everyone's. Code that really needs all users' notes (startup sync,
+# maintenance scripts) calls get_every_users_notes() by name.
+
+def get_all_notes(user_id: Optional[str]) -> list[dict]:
+    return list(notes_collection.find({"user_id": user_id}))
 
 
-def update_note(note_id: str, fields: dict, user_id: Optional[str] = None) -> int:
-    query = {"_id": note_id}
-    if user_id is not None:
-        query["user_id"] = user_id
-    result = notes_collection.update_one(query, {"$set": fields})
+def get_every_users_notes() -> list[dict]:
+    """All notes of all users. Only for startup/maintenance, never for a request."""
+    return list(notes_collection.find({}))
+
+
+def update_note(note_id: str, fields: dict, user_id: Optional[str]) -> int:
+    result = notes_collection.update_one({"_id": note_id, "user_id": user_id}, {"$set": fields})
     return result.matched_count
 
 
-def delete_note(note_id: str, user_id: Optional[str] = None) -> int:
-    query = {"_id": note_id}
-    if user_id is not None:
-        query["user_id"] = user_id
-    result = notes_collection.delete_one(query)
-    return result.deleted_count
+def delete_note(note_id: str, user_id: Optional[str]) -> int:
+    return notes_collection.delete_one({"_id": note_id, "user_id": user_id}).deleted_count
 
 
-def get_note_by_id(note_id: str, user_id: Optional[str] = None):
-    query = {"_id": note_id}
-    if user_id is not None:
-        query["user_id"] = user_id
-    return notes_collection.find_one(query)
+def get_note_by_id(note_id: str, user_id: Optional[str]):
+    return notes_collection.find_one({"_id": note_id, "user_id": user_id})
+
+
+def ensure_note_indexes():
+    """Idempotent: every request looks notes up by owner."""
+    notes_collection.create_index("user_id")
 
 
 if __name__ == "__main__":
-    logger.debug(get_all_notes())
+    logger.debug("%d notes", len(get_every_users_notes()))

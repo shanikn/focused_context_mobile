@@ -1,9 +1,10 @@
 from fastapi.testclient import TestClient
 
 from agents.categorizer import STORE_TYPES, categorize, infer_store_type
-from agents.pipeline import full_delete, store_type
+from agents.pipeline import store_type
 from api.main import app
 from notepad import Note
+from tests.support import delete_any  # noqa: E402
 
 client = TestClient(app)
 
@@ -53,8 +54,8 @@ def test_list_notes_reports_the_store_type():
     errand = client.post("/notes/", json={"content": "buy vitamins"}).json()["id"]
     todo = client.post("/notes/", json={"content": "call mom"}).json()["id"]
     by_id = {n["_id"]: n for n in client.get("/notes/").json()}
-    full_delete(errand)
-    full_delete(todo)
+    delete_any(errand)
+    delete_any(todo)
     assert by_id[errand]["category"] == "errand"
     assert by_id[errand]["store_type"] == "pharmacy"
     assert by_id[todo]["store_type"] is None

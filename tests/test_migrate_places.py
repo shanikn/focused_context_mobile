@@ -1,8 +1,9 @@
 from datetime import datetime
 
-from notepad import notes_collection, get_note_by_id
+from notepad import notes_collection
 from places import places_collection, resolve_place
 from scripts.migrate_places import apply_migration, plan_migration
+from tests.support import note_doc  # noqa: E402
 
 USER = "u-migrate"
 
@@ -46,8 +47,8 @@ def test_dry_run_plans_changes_without_writing():
     by_id = {c["note_id"]: c for c in changes}
 
     assert set(by_id) == {"m-home", "m-uni-explicit", "m-errands", "m-errands-explicit", "m-errands-timed"}
-    assert get_note_by_id("m-home")["contexts"] == ["home", "09:00"]  # nothing written
-    assert get_note_by_id("m-errands")["contexts"] == ["errands", "15:00"]
+    assert note_doc("m-home")["contexts"] == ["home", "09:00"]  # nothing written
+    assert note_doc("m-errands")["contexts"] == ["errands", "15:00"]
 
 
 def test_home_uni_work_tags_become_place_ids():
@@ -75,8 +76,8 @@ def test_errands_note_keeps_a_time_written_in_the_text():
 def test_apply_writes_and_is_idempotent():
     apply_migration(plan_migration(user_ids=[USER]))
     ids = _ids()
-    assert get_note_by_id("m-home")["contexts"] == [ids["home"], "09:00"]
-    assert get_note_by_id("m-errands")["contexts"] == []
-    errand = get_note_by_id("m-errands")
+    assert note_doc("m-home")["contexts"] == [ids["home"], "09:00"]
+    assert note_doc("m-errands")["contexts"] == []
+    errand = note_doc("m-errands")
     assert errand["category"] == "errand"  # category is not touched
     assert plan_migration(user_ids=[USER]) == []

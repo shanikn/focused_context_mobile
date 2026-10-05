@@ -20,7 +20,13 @@ def is_on_cooldown(note: Note):
     return cooldown > datetime.now(timezone.utc)
 
 
+# what the phone (or a test) may send to /notes/{id}/feedback
+FEEDBACK_ACTIONS = ("useful", "dismiss", "later", "annoying", "show less", "never show")
+
+
 def apply_feedback(note: Note, content: str):
+    if content not in FEEDBACK_ACTIONS:
+        raise ValueError(f"unknown feedback action: {content!r}")
     if content == "useful":
         note.useful_count += 1
     elif content == "dismiss":

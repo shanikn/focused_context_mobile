@@ -5,9 +5,10 @@ from fastapi.testclient import TestClient
 
 import api.main as main
 from agents.ingestion import collection, ingest_note
-from agents.pipeline import full_delete, sync_vectors
+from agents.pipeline import sync_vectors
 from agents.relevance import get_relevant_notes
 from notepad import Note, notes_collection, save_note
+from tests.support import delete_any  # noqa: E402
 
 client = TestClient(app=main.app)
 
@@ -22,9 +23,9 @@ def two_users(monkeypatch):
     monkeypatch.setattr(main, "get_user_id", lambda authorization: TOKENS.get(authorization))
     yield
     for doc in notes_collection.find({"user_id": {"$in": [A, B, ""]}, "_id": {"$regex": "^iso-"}}):
-        full_delete(doc["_id"])
+        delete_any(doc["_id"])
     for doc in notes_collection.find({"user_id": {"$in": [A, B]}}):
-        full_delete(doc["_id"])
+        delete_any(doc["_id"])
 
 
 def _stored(note_id: str, content: str, user_id, **fields) -> Note:
@@ -140,7 +141,9 @@ def test_startup_doesnt_rerun_enrichment_by_default(monkeypatch):
     monkeypatch.delenv("REINGEST_ON_STARTUP", raising=False)
     monkeypatch.setattr(main, "process_all_notes", lambda: calls.append("enrich"))
     monkeypatch.setattr(main, "sync_vectors", lambda: calls.append("sync"))
+    monkeypatch.setattr(main, "ensure_indexes", lambda: None)
     main.startup()
+    main._startup_thread.join(5)  # runs in the background
     assert calls == ["sync"]
 
 
@@ -149,5 +152,7 @@ def test_startup_reenriches_only_when_asked(monkeypatch):
     monkeypatch.setenv("REINGEST_ON_STARTUP", "true")
     monkeypatch.setattr(main, "process_all_notes", lambda: calls.append("enrich"))
     monkeypatch.setattr(main, "sync_vectors", lambda: calls.append("sync"))
+    monkeypatch.setattr(main, "ensure_indexes", lambda: None)
     main.startup()
+    main._startup_thread.join(5)
     assert calls == ["enrich"]

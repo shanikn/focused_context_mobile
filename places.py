@@ -25,6 +25,11 @@ class Place:
     order: int = 0
 
 
+def ensure_place_indexes():
+    """Idempotent: places are always looked up by owner."""
+    places_collection.create_index("user_id")
+
+
 def place_to_dict(place: Place) -> dict:
     """API shape: no user_id, no coordinates."""
     return {

@@ -1,4 +1,5 @@
 import logging
+import threading
 from typing import Optional
 import os
 from dotenv import load_dotenv
@@ -10,14 +11,16 @@ from fastapi import FastAPI, Header, HTTPException, Query  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from notepad import (  # noqa: E402
     Note, get_all_notes, update_note, note_to_dict, save_note,
-    get_note_by_id, dict_to_note
+    get_note_by_id, dict_to_note, ensure_note_indexes
 )
 from agents.pipeline import (  # noqa: E402
     enrich_note, full_delete, process_feedback,
     get_reminders, process_all_notes, reminder_time_source, store_type, sync_vectors,
     reenrich_user_notes, untag_place,
 )
+from agents.ranking_policy import FEEDBACK_ACTIONS  # noqa: E402
 from places import (  # noqa: E402
+    ensure_place_indexes,
     create_place, delete_place, get_places, place_to_dict, resolve_place,
     update_place,
 )
@@ -48,28 +51,78 @@ class NoteRequest(BaseModel):
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+class AccessLogWithoutQuery(logging.Filter):
+    """PUT /notes/{id} sends note text as query parameters; uvicorn's access
+    log would print the full URL. Keep only the path."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str):
+            record.args = args[:2] + (args[2].split("?", 1)[0],) + args[3:]
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(AccessLogWithoutQuery())
+
+
+def cors_origins() -> list[str]:
+    """Browser origins allowed to call the API, from CORS_ORIGINS (comma
+    separated). The only client is the mobile app, which isn't subject to
+    CORS, so by default no browser origin is allowed. "*" is never accepted."""
+    raw = os.getenv("CORS_ORIGINS", "")
+    return [o.strip() for o in raw.split(",") if o.strip() and o.strip() != "*"]
+
+
+if cors_origins():
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins(),
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
+
+
+def ensure_indexes():
+    try:
+        ensure_note_indexes()
+        ensure_place_indexes()
+    except Exception:
+        logging.exception("Creating MongoDB indexes failed")
+
+
+# the background startup work, so tests can wait for it
+_startup_thread: Optional[threading.Thread] = None
+
+
+def _startup_work(reingest: bool):
+    try:
+        if reingest:
+            # re-runs the AI enrichment on every note (writes to MongoDB)
+            logging.info("Re-ingesting all notes into ChromaDB...")
+            process_all_notes()
+            logging.info("Startup ingestion complete.")
+        else:
+            # the default: only embed what ChromaDB is missing, notes unchanged
+            sync_vectors()
+    except Exception:
+        logging.exception("Startup vector sync failed")
 
 
 @app.on_event("startup")
 def startup():
+    """Indexes first (quick), then the vector sync in the background, so the
+    server answers requests right away. Until the sync finishes, semantic
+    search may miss notes that aren't embedded yet."""
+    global _startup_thread
+    ensure_indexes()
     reingest_on_startup = os.getenv("REINGEST_ON_STARTUP", "").lower() in {
         "1", "true", "yes", "on"
     }
-    if reingest_on_startup:
-        # re-runs the AI enrichment on every note (writes to MongoDB)
-        logging.info("Re-ingesting all notes into ChromaDB...")
-        process_all_notes()
-        logging.info("Startup ingestion complete.")
-    else:
-        # the default: only embed what ChromaDB is missing, notes unchanged
-        logging.info("Syncing ChromaDB with MongoDB (REINGEST_ON_STARTUP=true re-runs enrichment)")
-        sync_vectors()
+    _startup_thread = threading.Thread(
+        target=_startup_work, args=(reingest_on_startup,), name="startup-sync", daemon=True
+    )
+    _startup_thread.start()
 
 
 @app.get("/")
@@ -110,7 +163,7 @@ def create_note(
     # inline, like PUT: the phone syncs alarms right after saving, so the
     # date/time and place must already be there
     enrich_note(note)
-    logging.info("Note created: %s (%s)", note.id, note.content[:30])
+    logging.info("Note created: %s", note.id)
     return {"id": note.id, "content": note.content, "category": note.category}
 
 
@@ -350,7 +403,8 @@ def feedback(
     authorization: Optional[str] = Header(None),
 ):
     user_id = require_user_id(authorization)
-    from notepad import get_note_by_id, dict_to_note
+    if action not in FEEDBACK_ACTIONS:
+        raise HTTPException(status_code=422, detail=f"action must be one of {list(FEEDBACK_ACTIONS)}")
     doc = get_note_by_id(note_id, user_id=user_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Note not found")

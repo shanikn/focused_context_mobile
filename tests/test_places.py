@@ -1,12 +1,13 @@
 from fastapi.testclient import TestClient
 
 from api.main import app
-from agents.pipeline import full_delete, process_new_notes
-from notepad import Note, get_note_by_id
+from agents.pipeline import process_new_notes
+from notepad import Note
 from places import (
     create_place, delete_place, get_places, places_collection,
     resolve_place, update_place,
 )
+from tests.support import delete_any, note_doc  # noqa: E402
 
 client = TestClient(app)
 
@@ -99,7 +100,7 @@ def test_note_is_tagged_with_place_id():
     home = resolve_place(None, "home")
     note = Note(content="do the laundry")
     process_new_notes(note)
-    full_delete(note.id)
+    delete_any(note.id)
     assert home.id in note.contexts
     assert "home" not in note.contexts
 
@@ -112,7 +113,7 @@ def test_custom_place_tagged_by_name_keyword_and_meaning():
     unrelated = Note(content="call mom")
     for n in (by_name, by_keyword, by_meaning, unrelated):
         process_new_notes(n)
-        full_delete(n.id)
+        delete_any(n.id)
     delete_place(None, gym.id)
     assert gym.id in by_name.contexts
     assert gym.id in by_keyword.contexts
@@ -123,7 +124,7 @@ def test_custom_place_tagged_by_name_keyword_and_meaning():
 def test_errand_notes_get_no_location_and_no_default_time():
     note = Note(content="buy milk")
     process_new_notes(note)
-    full_delete(note.id)
+    delete_any(note.id)
     assert note.category == "errand"
     assert note.contexts == []
 
@@ -156,20 +157,20 @@ def test_places_api_crud():
 def test_adding_a_place_retags_existing_notes():
     note_id = client.post("/notes/", json={"content": "refill my prescription"}).json()["id"]
     place = client.post("/places/", json={"name": "Pharmacy"}).json()
-    note = get_note_by_id(note_id)
+    note = note_doc(note_id)
     client.delete(f"/places/{place['id']}")
-    full_delete(note_id)
+    delete_any(note_id)
     assert place["id"] in note["contexts"]
 
 
 def test_deleting_a_place_untags_notes():
     place = client.post("/places/", json={"name": "Gym"}).json()
     note_id = client.post("/notes/", json={"content": "leg day workout"}).json()["id"]
-    assert place["id"] in get_note_by_id(note_id)["contexts"]
+    assert place["id"] in note_doc(note_id)["contexts"]
 
     client.delete(f"/places/{place['id']}")
-    note = get_note_by_id(note_id)
-    full_delete(note_id)
+    note = note_doc(note_id)
+    delete_any(note_id)
     assert place["id"] not in note["contexts"]
 
 
@@ -177,9 +178,9 @@ def test_renaming_a_place_keeps_note_tags():
     place = client.post("/places/", json={"name": "Gym"}).json()
     note_id = client.post("/notes/", json={"content": "leg day workout"}).json()["id"]
     client.put(f"/places/{place['id']}", json={"name": "Fitness"})
-    note = get_note_by_id(note_id)
+    note = note_doc(note_id)
     client.delete(f"/places/{place['id']}")
-    full_delete(note_id)
+    delete_any(note_id)
     assert place["id"] in note["contexts"]
 
 
@@ -191,7 +192,7 @@ def test_reminders_accept_place_name_or_id():
     by_id = [n["_id"] for n in client.get("/reminders/", params={"location": place["id"]}).json()]
 
     client.delete(f"/places/{place['id']}")
-    full_delete(note_id)
+    delete_any(note_id)
     assert note_id in by_name
     assert note_id in by_id
 
@@ -201,7 +202,7 @@ def test_location_override_by_name_is_stored_as_id():
         "content": "random note", "location_explicit": True, "location_value": "work",
     }).json()["id"]
     work = client.get("/places/").json()[2]
-    note = get_note_by_id(note_id)
-    full_delete(note_id)
+    note = note_doc(note_id)
+    delete_any(note_id)
     assert note["location_value"] == work["id"]
     assert work["id"] in note["contexts"]

@@ -1,10 +1,11 @@
 import json
 from datetime import datetime
 
-from notepad import MONGO_DB_NAME, get_note_by_id, notes_collection
+from notepad import MONGO_DB_NAME, notes_collection
 from scripts.migrate_categories import (
     OLD_TO_NEW, apply_changes, backup_notes, plan_changes, summarize,
 )
+from tests.support import note_doc  # noqa: E402
 
 USER = "u-migrate-cat"
 OTHER = "u-someone-else"
@@ -51,8 +52,8 @@ def test_plan_only_touches_old_kinds_of_that_user():
     assert sorted(c["note_id"] for c in changes) == ["c-rem", "c-sched", "c-task", "c-unc"]
     assert all(c["after"] == "todo" for c in changes)
     # nothing written yet
-    assert get_note_by_id("c-sched")["category"] == "scheduled"
-    assert get_note_by_id("c-other")["category"] == "scheduled"
+    assert note_doc("c-sched")["category"] == "scheduled"
+    assert note_doc("c-other")["category"] == "scheduled"
 
 
 def test_summary_counts_and_sample():
@@ -77,9 +78,9 @@ def test_backup_writes_the_full_affected_notes(tmp_path):
 def test_apply_changes_only_the_category_and_is_idempotent():
     applied = apply_changes(plan_changes(USER))
     assert applied == 4
-    assert get_note_by_id("c-sched")["category"] == "todo"
-    assert get_note_by_id("c-rem")["category"] == "todo"
-    assert get_note_by_id("c-rem")["category_explicit"] is True  # untouched
-    assert get_note_by_id("c-errand")["category"] == "errand"
-    assert get_note_by_id("c-other")["category"] == "scheduled"  # other users untouched
+    assert note_doc("c-sched")["category"] == "todo"
+    assert note_doc("c-rem")["category"] == "todo"
+    assert note_doc("c-rem")["category_explicit"] is True  # untouched
+    assert note_doc("c-errand")["category"] == "errand"
+    assert note_doc("c-other")["category"] == "scheduled"  # other users untouched
     assert plan_changes(USER) == []

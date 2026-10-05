@@ -95,7 +95,7 @@ def categorize(content: str) -> str:
         result = "idea"
     else:
         result = "todo"
-    logger.debug("categorize(%s) -> %s", content[:30], result)
+    logger.debug("categorize -> %s", result)
     return result
 
 
