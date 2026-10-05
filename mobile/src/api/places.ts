@@ -36,6 +36,11 @@ export async function nearbyStores(
   return apiRequest(`/places/nearby?${params.toString()}`);
 }
 
+// coordinates of a Google Maps link; the server follows short share links
+export async function resolveMapsLink(url: string): Promise<{ latitude: number; longitude: number }> {
+  return apiRequest(`/places/resolve-link?${new URLSearchParams({ url }).toString()}`);
+}
+
 export async function deletePlace(id: string): Promise<{ message: string }> {
   return apiRequest(`/places/${id}`, { method: "DELETE" });
 }

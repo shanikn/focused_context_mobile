@@ -19,11 +19,14 @@ import { LatLon } from "../lib/geo";
 import { jumpToScript, MAP_BASE_URL, mapHtml, MapView, parseMapMessage } from "../lib/mapPick";
 import { AddressResult, searchErrorMessage } from "../lib/nominatim";
 import { findAddress } from "../services/addressSearch";
+import { parsePastedLocation } from "../lib/pastedLocation";
+import { resolvePastedLocation } from "../services/pastedLocation";
 import { MIN_TOUCH_TARGET, Theme, fonts, radius, spacing } from "../theme";
 import { useTheme, useThemedStyles } from "../ThemeContext";
 
-// Full-screen map to pick a place's location: search to jump there, drag the
-// map under the pin, then "Save here".
+// Full-screen map to pick a place's location: search an address (or paste
+// coordinates or a Google Maps link) to jump there, drag the map under the
+// pin, then "Save here".
 export default function MapPickerModal({
   visible,
   placeName,
@@ -52,7 +55,7 @@ export default function MapPickerModal({
   const [results, setResults] = useState<AddressResult[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
-  const jumpTo = (result: AddressResult) => {
+  const jumpTo = (result: LatLon) => {
     const point = { latitude: result.latitude, longitude: result.longitude };
     center.current = point; // right away, in case Save comes before the page reports
     webView.current?.injectJavaScript(jumpToScript(point));
@@ -67,6 +70,12 @@ export default function MapPickerModal({
     setSearching(true);
     setMessage(null);
     try {
+      // coordinates or a Maps link: straight there, no address search
+      if (parsePastedLocation(q).kind !== "none") {
+        setResults([]);
+        jumpTo(await resolvePastedLocation(q));
+        return;
+      }
       const found = await findAddress(q);
       setResults(found);
       if (found.length === 0) {
@@ -97,7 +106,7 @@ export default function MapPickerModal({
             style={styles.searchInput}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search an address"
+            placeholder="Address, coordinates or Maps link"
             placeholderTextColor={colors.textMuted}
             returnKeyType="search"
             onSubmitEditing={runSearch}

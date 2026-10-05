@@ -68,6 +68,30 @@ jest.mock("../components/MapPickerModal", () => {
     ) : null;
 });
 jest.mock("../services/addressSearch", () => ({ findAddress: jest.fn().mockResolvedValue([]) }));
+jest.mock("../components/PasteLocationModal", () => {
+  const { View } = require("react-native");
+  return (props: { visible: boolean; placeName: string; onSave: unknown }) =>
+    props.visible ? <View testID="paste-location" accessibilityLabel={props.placeName} onSave={props.onSave} /> : null;
+});
+
+const LOCATION_WAYS = ["Use current location", "Search address", "Pick on map", "Paste coordinates or Google Maps link"];
+
+// the "Set location" sheet's options (not an Alert: Android shows at most 3 buttons)
+function locationWays(tree: ReactTestRenderer): string[] {
+  return tree.root
+    .findAll((n) => n.props.testID === "location-way" && typeof n.type === "string")
+    .map((n) => n.props.accessibilityLabel as string);
+}
+
+async function chooseLocationWay(tree: ReactTestRenderer, label: string) {
+  const option = tree.root.findAll((n) => n.props.testID === "location-way" && n.props.accessibilityLabel === label)[0];
+  if (!option) {
+    throw new Error(`no location option "${label}"`);
+  }
+  await act(async () => {
+    await option.props.onPress();
+  });
+}
 // the color wheel needs native Reanimated; not under test here
 jest.mock("../components/CategoryColorModal", () => () => null);
 jest.mock("../components/AddressSearchModal", () => {
@@ -146,10 +170,8 @@ test("a place without a location: 'No location set', no radius chips, 'Set locat
     false
   );
   await act(async () => byLabel(tree, "Set location for Gym").props.onPress());
-  // Android shows at most 3 alert buttons; tapping outside closes it
-  expect(lastAlertButtons()).toEqual(["Use current location", "Search address", "Pick on map"]);
-  expect(alertSpy.mock.calls.at(-1)?.[3]).toEqual({ cancelable: true });
-  await pressAlertButton("Search address");
+  expect(locationWays(tree)).toEqual(LOCATION_WAYS);
+  await chooseLocationWay(tree, "Search address");
   expect(tree.root.findByProps({ testID: "address-search" }).props.accessibilityLabel).toBe("Gym");
 });
 
@@ -170,7 +192,7 @@ test("the ⋯ menu fits Android's 3 alert buttons: Change location, Rename, Dele
   expect(lastAlertButtons()).toEqual(["Change location", "Rename", "Delete"]);
   expect(alertSpy.mock.calls.at(-1)?.[3]).toEqual({ cancelable: true });
   await pressAlertButton("Change location");
-  expect(lastAlertButtons()).toEqual(["Use current location", "Search address", "Pick on map"]);
+  expect(locationWays(tree)).toEqual(LOCATION_WAYS);
   await act(async () => byLabel(tree, "Gym options").props.onPress());
   expect(lastAlertButtons()).toEqual(["Change location", "Rename", "Delete"]);
 });
@@ -340,16 +362,16 @@ describe("current location: fast, and Where you are now follows place changes", 
 
   async function useCurrentLocationFor(tree: ReactTestRenderer, name: string) {
     await act(async () => byLabel(tree, `Set location for ${name}`).props.onPress());
-    await pressAlertButton("Use current location");
+    await chooseLocationWay(tree, "Use current location");
   }
 
   // starts it without waiting for the fix, to see the screen meanwhile
   // (returns { done } so awaiting this doesn't wait for the fix)
   async function startUsingCurrentLocationFor(tree: ReactTestRenderer, name: string) {
     await act(async () => byLabel(tree, `Set location for ${name}`).props.onPress());
-    const button = ((alertSpy.mock.calls.at(-1)?.[2] ?? []) as AlertButton[]).find(
-      (b) => b.text === "Use current location"
-    )!;
+    const button = tree.root.findAll(
+      (n) => n.props.testID === "location-way" && n.props.accessibilityLabel === "Use current location"
+    )[0].props;
     const done = Promise.resolve(button.onPress!() as unknown as Promise<void>);
     // let it get as far as waiting for the fix
     await act(async () => {
@@ -427,14 +449,14 @@ describe("current location: fast, and Where you are now follows place changes", 
     lastKnown.mockResolvedValue(fix(A));
     const tree = await renderScreen();
     await act(async () => byLabel(tree, "Set location for Gym").props.onPress());
-    await pressAlertButton("Search address");
+    await chooseLocationWay(tree, "Search address");
     await act(async () =>
       tree.root.findByProps({ testID: "address-search" }).props.onSave({ ...near(0.001), label: "Gym St 1" })
     );
     expect(selected(tree, "Gym")).toBe(true); // ~110 m, inside 200 m
 
     await act(async () => byLabel(tree, "Set location for Home").props.onPress());
-    await pressAlertButton("Search address");
+    await chooseLocationWay(tree, "Search address");
     await act(async () =>
       tree.root.findByProps({ testID: "address-search" }).props.onSave({ ...near(0.02), label: "Far 9" })
     );
@@ -481,7 +503,7 @@ describe("Pick on map", () => {
 
   async function openMapFor(tree: ReactTestRenderer, name: string) {
     await act(async () => byLabel(tree, `Set location for ${name}`).props.onPress());
-    await pressAlertButton("Pick on map");
+    await chooseLocationWay(tree, "Pick on map");
     return tree.root.findByProps({ testID: "map-picker" });
   }
 
@@ -501,7 +523,7 @@ describe("Pick on map", () => {
     const tree = await renderScreen();
     await act(async () => byLabel(tree, "Home options").props.onPress());
     await pressAlertButton("Change location");
-    await pressAlertButton("Pick on map");
+    await chooseLocationWay(tree, "Pick on map");
     expect(tree.root.findByProps({ testID: "map-picker" }).props.initialView).toMatchObject({
       latitude: 32.1,
       longitude: 34.8,
@@ -524,5 +546,34 @@ describe("Pick on map", () => {
     });
     expect(syncGeofencing).toHaveBeenCalled();
     expect(allText(tree.root)).toContain("5 Sirkin St, Herzliya · 200 m");
+  });
+});
+
+describe("Paste coordinates or Google Maps link", () => {
+  const { findAddress } = jest.requireMock("../services/addressSearch");
+
+  test("saves the point, re-checks Where you are now, then fills the address", async () => {
+    const Location = require("expo-location");
+    (Location.getLastKnownPositionAsync as jest.Mock).mockResolvedValueOnce({
+      coords: { latitude: 32.0813, longitude: 34.8105, accuracy: 10 },
+      timestamp: Date.now(),
+    });
+    (findAddress as jest.Mock).mockResolvedValue([{ label: "Begin Rd 1, Ramat Gan", latitude: 32.0811, longitude: 34.8104 }]);
+    const tree = await renderScreen();
+    await act(async () => byLabel(tree, "Set location for Gym").props.onPress());
+    await chooseLocationWay(tree, "Paste coordinates or Google Maps link");
+    const dialog = tree.root.findByProps({ testID: "paste-location" });
+    expect(dialog.props.accessibilityLabel).toBe("Gym");
+    await act(async () => dialog.props.onSave({ latitude: 32.0812, longitude: 34.8105 }));
+    expect(tree.root.findAll((n) => n.props.testID === "paste-location")).toHaveLength(0);
+    expect((await getAllCoords())["id-gym"]).toMatchObject({
+      latitude: 32.0812,
+      longitude: 34.8105,
+      source: "pasted",
+      address: "Begin Rd 1, Ramat Gan",
+    });
+    expect(syncGeofencing).toHaveBeenCalled();
+    expect(setReminderLocation).toHaveBeenCalledWith("id-gym"); // I'm right there
+    expect(allText(tree.root)).toContain("Begin Rd 1, Ramat Gan · 200 m");
   });
 });

@@ -14,6 +14,7 @@ jest.mock("react-native-webview", () => {
   return { WebView };
 });
 jest.mock("../services/addressSearch", () => ({ findAddress: jest.fn() }));
+jest.mock("../api/places", () => ({ resolveMapsLink: jest.fn() }));
 
 const VIEW = { latitude: 32.1, longitude: 34.8, radius: 400, zoom: 17, from: "place" as const };
 
@@ -129,5 +130,53 @@ describe("search on the map", () => {
     expect(input.props.autoCapitalize).toBe("none");
     await search(tree, "רוטשילד 10, תל אביב");
     expect(findAddress).toHaveBeenCalledWith("רוטשילד 10, תל אביב");
+  });
+});
+
+describe("pasting into the map's search box", () => {
+  const { findAddress } = jest.requireMock("../services/addressSearch");
+  const { resolveMapsLink } = jest.requireMock("../api/places");
+
+  beforeEach(() => {
+    mockInject.mockClear();
+    (findAddress as jest.Mock).mockReset();
+    (resolveMapsLink as jest.Mock).mockReset();
+  });
+
+  async function searchFor(tree: ReactTestRenderer, query: string) {
+    const input = tree.root.findAllByType(TextInput).find((t) => t.props.accessibilityLabel === "Search the map")!;
+    await act(async () => input.props.onChangeText(query));
+    await act(async () => input.props.onSubmitEditing());
+  }
+
+  test("coordinates jump straight there, no address search", async () => {
+    const onSave = jest.fn();
+    const tree = await render(onSave);
+    await searchFor(tree, "32.0812, 34.8105");
+    expect(findAddress).not.toHaveBeenCalled();
+    expect(mockInject).toHaveBeenCalledWith("map.setView([32.0812, 34.8105], 17); true;");
+    await act(async () => button(tree, "Save here").props.onPress());
+    expect(onSave).toHaveBeenCalledWith({ latitude: 32.0812, longitude: 34.8105 });
+  });
+
+  test("a Google Maps link jumps to its point; a short link is followed by the server", async () => {
+    const tree = await render();
+    await searchFor(tree, "https://www.google.com/maps/@32.08,34.81,15z");
+    expect(mockInject).toHaveBeenLastCalledWith("map.setView([32.08, 34.81], 17); true;");
+    (resolveMapsLink as jest.Mock).mockResolvedValue({ latitude: 31.77, longitude: 35.21 });
+    await searchFor(tree, "https://maps.app.goo.gl/AbC123");
+    expect(resolveMapsLink).toHaveBeenCalledWith("https://maps.app.goo.gl/AbC123");
+    expect(mockInject).toHaveBeenLastCalledWith("map.setView([31.77, 35.21], 17); true;");
+  });
+
+  test("out-of-range coordinates: a message, the map stays", async () => {
+    const tree = await render();
+    await searchFor(tree, "95, 34");
+    expect(mockInject).not.toHaveBeenCalled();
+    const text = tree.root
+      .findAllByType(Text)
+      .map((t) => [t.props.children].flat().join(""))
+      .join(" | ");
+    expect(text).toContain("Latitude must be between -90 and 90.");
   });
 });

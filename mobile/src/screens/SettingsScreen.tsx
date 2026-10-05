@@ -50,6 +50,8 @@ const REFINE_MIN_MOVE_M = 25;
 import { AddressResult } from "../lib/nominatim";
 import PlaceEditorModal from "../components/PlaceEditorModal";
 import MapPickerModal from "../components/MapPickerModal";
+import PasteLocationModal from "../components/PasteLocationModal";
+import LocationWaysSheet, { LocationWay } from "../components/LocationWaysSheet";
 import { initialMapView, MapView } from "../lib/mapPick";
 import { LatLon } from "../lib/geo";
 import { fillPickedAddress, savePickedPoint } from "../services/mapPick";
@@ -104,6 +106,8 @@ export default function SettingsScreen() {
   const [editor, setEditor] = useState<{ place: UserPlace | null } | null>(null);
   const [addressFor, setAddressFor] = useState<UserPlace | null>(null);
   const [mapFor, setMapFor] = useState<{ place: UserPlace; view: MapView } | null>(null);
+  const [waysFor, setWaysFor] = useState<UserPlace | null>(null);
+  const [pasteFor, setPasteFor] = useState<UserPlace | null>(null);
   const [categoryColors, setCategoryColors] = useState<CategoryColors>(DEFAULT_CATEGORY_COLORS);
   const [colorFor, setColorFor] = useState<Category | null>(null);
 
@@ -479,18 +483,46 @@ export default function SettingsScreen() {
   };
 
   // "Set location" (no location yet): the two ways to set one
-  // Android shows at most 3 alert buttons, so no Cancel: tapping outside closes it
-  const openSetLocation = (place: UserPlace) => {
-    Alert.alert(
-      `Set ${place.name}'s location`,
-      undefined,
-      [
-        { text: "Use current location", onPress: () => handleUseCurrentLocation(place) },
-        { text: "Search address", onPress: () => setAddressFor(place) },
-        { text: "Pick on map", onPress: () => handlePickOnMap(place) },
-      ],
-      { cancelable: true }
-    );
+  // a sheet with the ways to set it (an Alert can't hold four on Android)
+  const openSetLocation = (place: UserPlace) => setWaysFor(place);
+
+  const handleLocationWay = (way: LocationWay) => {
+    const place = waysFor;
+    setWaysFor(null);
+    if (!place) {
+      return;
+    }
+    if (way === "current") {
+      return handleUseCurrentLocation(place);
+    }
+    if (way === "address") {
+      return setAddressFor(place);
+    }
+    if (way === "map") {
+      return handlePickOnMap(place);
+    }
+    return setPasteFor(place);
+  };
+
+  // pasted coordinates or a Google Maps link: saved right away, then the
+  // address follows when the backend's reverse lookup answers
+  const handlePasteSave = async (point: LatLon) => {
+    const place = pasteFor;
+    setPasteFor(null);
+    if (!place) {
+      return;
+    }
+    try {
+      await savePickedPoint(place.id, point, "pasted");
+      await afterPlacesChanged();
+      await recheckWhereIAm(place.id);
+    } catch {
+      Alert.alert("Couldn't save the location", "Try again.");
+      return;
+    }
+    if (await fillPickedAddress(place.id, point, undefined, "pasted")) {
+      await refreshPlaces();
+    }
   };
 
   // ⋯ menu: every action for a place, in Android's 3-button limit (more
@@ -743,6 +775,13 @@ export default function SettingsScreen() {
           onCancel={() => setMapFor(null)}
         />
       )}
+      <LocationWaysSheet placeName={waysFor?.name ?? null} onChoose={handleLocationWay} onClose={() => setWaysFor(null)} />
+      <PasteLocationModal
+        visible={pasteFor !== null}
+        placeName={pasteFor?.name ?? ""}
+        onSave={handlePasteSave}
+        onCancel={() => setPasteFor(null)}
+      />
       <AddressSearchModal
         visible={addressFor !== null}
         placeName={addressFor?.name ?? ""}

@@ -67,3 +67,14 @@ describe("then the address, by reverse geocoding through the backend", () => {
     expect((await getAllCoords())["id-gym"]).toBeUndefined();
   });
 });
+
+describe("pasted locations", () => {
+  test("saved as source 'pasted', shown as 'Set from coordinates' until the address is known", async () => {
+    await savePickedPoint("id-gym", POINT, "pasted");
+    const coords = (await getAllCoords())["id-gym"];
+    expect(coords).toEqual({ ...POINT, radius: 200, source: "pasted" });
+    expect(placeLocationText({ id: "id-gym", name: "Gym", keywords: [], kind: null, coords })).toBe("Set from coordinates");
+    expect(await fillPickedAddress("id-gym", POINT, jest.fn().mockResolvedValue([NEAR]), "pasted")).toBe(NEAR.label);
+    expect((await getAllCoords())["id-gym"]).toEqual({ ...POINT, radius: 200, source: "pasted", address: NEAR.label });
+  });
+});

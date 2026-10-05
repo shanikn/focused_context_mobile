@@ -27,6 +27,7 @@ from places import (  # noqa: E402
 from auth import get_user_id  # noqa: E402
 import geocode  # noqa: E402
 import nearby  # noqa: E402
+import maps_links  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -336,6 +337,24 @@ def nearby_stores(
             status_code=_NEARBY_STATUS.get(e.kind, 502),
             detail={"kind": e.kind, "upstream_status": e.status},
         )
+
+
+# ---- pasted Google Maps links: the phone asks us to follow short links ----
+
+_LINK_STATUS = {"not_allowed": 422, "no_coordinates": 422, "network": 504}
+
+
+@app.get("/places/resolve-link")
+def resolve_maps_link(url: str, authorization: Optional[str] = Header(None)):
+    """Coordinates of a Google Maps link (short maps.app.goo.gl links are
+    followed, Google hosts only). Nothing is stored."""
+    require_user_id(authorization)
+    try:
+        lat, lon = maps_links.resolve(url)
+    except maps_links.LinkError as e:
+        logging.warning("Maps link failed: %s", e.kind)
+        raise HTTPException(status_code=_LINK_STATUS.get(e.kind, 502), detail={"kind": e.kind})
+    return {"latitude": lat, "longitude": lon}
 
 
 # ---- places: names (and optional keywords) only; coordinates stay on the phone ----

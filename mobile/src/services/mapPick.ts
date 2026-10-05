@@ -8,9 +8,12 @@ import { findAddress } from "./addressSearch";
 // the address by reverse geocoding through the backend's address search,
 // which Nominatim answers with the nearest address for a "lat,lon" query.
 
-export async function savePickedPoint(placeId: string, point: LatLon): Promise<void> {
+// "map": picked on the map; "pasted": coordinates or a Google Maps link
+type PointSource = "map" | "pasted";
+
+export async function savePickedPoint(placeId: string, point: LatLon, source: PointSource = "map"): Promise<void> {
   // keeps the place's radius; an address from before is dropped
-  await setPlaceCoords(placeId, point, undefined, { source: "map" });
+  await setPlaceCoords(placeId, point, undefined, { source });
 }
 
 // The address near the point, saved if the place is still where it was
@@ -18,7 +21,8 @@ export async function savePickedPoint(placeId: string, point: LatLon): Promise<v
 export async function fillPickedAddress(
   placeId: string,
   point: LatLon,
-  find: (query: string) => Promise<AddressResult[]> = findAddress
+  find: (query: string) => Promise<AddressResult[]> = findAddress,
+  source: PointSource = "map"
 ): Promise<string | null> {
   let label: string | null;
   try {
@@ -31,10 +35,10 @@ export async function fillPickedAddress(
   }
   const current = (await getAllCoords())[placeId];
   const unchanged =
-    current?.source === "map" && current.latitude === point.latitude && current.longitude === point.longitude;
+    current?.source === source && current.latitude === point.latitude && current.longitude === point.longitude;
   if (!unchanged) {
     return null;
   }
-  await setPlaceCoords(placeId, point, undefined, { source: "map", address: label });
+  await setPlaceCoords(placeId, point, undefined, { source, address: label });
   return label;
 }

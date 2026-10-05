@@ -25,14 +25,14 @@ export interface ServerPlace {
 }
 
 // how the location was set; missing on locations saved before this existed
-export type CoordsSource = "address" | "current" | "map";
+export type CoordsSource = "address" | "current" | "map" | "pasted";
 
 export interface PlaceCoords {
   latitude: number;
   longitude: number;
   radius: number; // meters
   source?: CoordsSource;
-  address?: string; // set by address search, or found for a point picked on the map
+  address?: string; // from address search, or found for a point picked on the map or pasted
 }
 
 export interface UserPlace extends ServerPlace {
@@ -72,7 +72,7 @@ export async function setPlaceCoords(
   };
   if (origin) {
     coords[placeId].source = origin.source;
-    if ((origin.source === "address" || origin.source === "map") && origin.address) {
+    if (origin.source !== "current" && origin.address) {
       coords[placeId].address = origin.address;
     }
   }
@@ -169,11 +169,14 @@ export function placeLocationText(place: UserPlace): string {
   if (!coords) {
     return "No location set";
   }
-  if ((coords.source === "address" || coords.source === "map") && coords.address?.trim()) {
+  if (coords.source !== "current" && coords.address?.trim()) {
     return coords.address.trim();
   }
   if (coords.source === "map") {
     return "Pinned on map";
+  }
+  if (coords.source === "pasted") {
+    return "Set from coordinates";
   }
   if (coords.source === "current") {
     return "Set from current location";
