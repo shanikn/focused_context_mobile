@@ -212,7 +212,8 @@ export default function SettingsScreen() {
   };
 
   // clears the address and radius on this phone and re-registers the geofences
-  // without it; the place itself (and the notes tagged with it) stays
+  // without it ("Where you are now" goes to "Not at a place" if it was this place);
+  // the place itself (and the notes tagged with it) stays
   const handleRemovePlace = (place: UserPlace) => {
     Alert.alert(
       "Remove place",
@@ -225,6 +226,10 @@ export default function SettingsScreen() {
           style: "destructive",
           onPress: async () => {
             await removePlaceCoords(place.id);
+            // without a location you can't be detected there any more
+            if (location === place.id) {
+              await setReminderLocation(UNKNOWN);
+            }
             await afterPlacesChanged();
           },
         },

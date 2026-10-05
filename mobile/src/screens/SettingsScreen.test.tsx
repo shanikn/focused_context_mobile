@@ -229,3 +229,49 @@ describe("Remove place", () => {
     expect(hasLabel(tree, "Remove place Home")).toBe(false);
   });
 });
+
+describe("Remove place and Where you are now", () => {
+  const { getReminderLocation } = jest.requireMock("../lib/reminderPrefs");
+  let stored: string;
+
+  beforeEach(async () => {
+    await setPlaceCoords("id-home", { latitude: 1, longitude: 2 });
+    await setPlaceCoords("id-gym", { latitude: 3, longitude: 4 });
+    // remember what the screen saves, so a reload reads it back
+    (getReminderLocation as jest.Mock).mockImplementation(async () => stored);
+    (setReminderLocation as jest.Mock).mockImplementation(async (value: string) => {
+      stored = value;
+    });
+  });
+
+  afterEach(() => {
+    (getReminderLocation as jest.Mock).mockResolvedValue("id-home");
+    (setReminderLocation as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  async function removePlace(tree: ReactTestRenderer, name: string) {
+    await act(async () => byLabel(tree, `Remove place ${name}`).props.onPress());
+    await pressAlertButton("Remove");
+  }
+
+  test("removing the current place sets 'Not at a place'", async () => {
+    stored = "id-home";
+    const tree = await renderScreen();
+    await removePlace(tree, "Home");
+    expect(setReminderLocation).toHaveBeenLastCalledWith("unknown");
+    expect(byLabel(tree, "Not at a place").props.accessibilityState.selected).toBe(true);
+    expect(byLabel(tree, "Home").props.accessibilityState.selected).toBe(false);
+  });
+
+  test("removing another place leaves the current place alone", async () => {
+    stored = "id-gym";
+    const tree = await renderScreen();
+    await removePlace(tree, "Home");
+    expect(setReminderLocation).not.toHaveBeenCalledWith("unknown");
+    expect(stored).toBe("id-gym");
+    expect(byLabel(tree, "Gym").props.accessibilityState.selected).toBe(true);
+    // Gym keeps its location
+    expect((await getAllCoords())["id-gym"]).toBeDefined();
+    expect(byLabel(tree, "Remove place Gym")).toBeTruthy();
+  });
+});
