@@ -102,9 +102,12 @@ def get_relevant_notes(
     if n == 0:
         return []
 
+    # only this user's vectors, so other users' notes can neither show up
+    # nor take the top places
     results = collection.query(
         query_embeddings=[embedding],
         n_results=n,
+        where={"user_id": user_id or ""},
         include=["distances", "metadatas"],
     )
     logger.debug("ChromaDB distances: %s", results["distances"])

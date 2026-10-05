@@ -219,3 +219,28 @@ def process_all_notes():
     for note in notes:
         reingest_note(dict_to_note(note))
     logger.info("Re-ingestion complete")
+
+
+def sync_vectors():
+    """Make ChromaDB match MongoDB without re-running the AI: embed notes
+    that have no vector (ChromaDB isn't persisted on Azure), set the owner
+    on vectors stored before user_id was, and drop vectors of deleted notes.
+    Doesn't change any note."""
+    docs = {d["_id"]: d for d in get_all_notes()}
+    stored = collection.get(include=["metadatas"])
+    vectors = dict(zip(stored["ids"], stored["metadatas"]))
+    orphans = [i for i in vectors if i not in docs]
+    if orphans:
+        collection.delete(ids=orphans)
+    added = fixed = 0
+    for note_id, doc in docs.items():
+        owner = doc.get("user_id") or ""
+        if note_id not in vectors:
+            ingest_note(dict_to_note(doc))
+            added += 1
+        elif (vectors[note_id] or {}).get("user_id") != owner:
+            collection.update(ids=[note_id], metadatas=[{**(vectors[note_id] or {}), "user_id": owner}])
+            fixed += 1
+    logger.info(
+        "Vectors synced: %d added, %d owners set, %d orphans removed", added, fixed, len(orphans)
+    )

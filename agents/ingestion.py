@@ -36,6 +36,8 @@ def ingest_note(note: Note):
         metadatas=[{
             "category": note.category,
             "created_at": str(note.created_at),
+            # every search filters by this; ChromaDB metadata can't be None
+            "user_id": note.user_id or "",
         }],
     )
 

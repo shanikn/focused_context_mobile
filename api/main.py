@@ -14,7 +14,7 @@ from notepad import (  # noqa: E402
 )
 from agents.pipeline import (  # noqa: E402
     enrich_note, full_delete, process_feedback,
-    get_reminders, process_all_notes, reminder_time_source, store_type,
+    get_reminders, process_all_notes, reminder_time_source, store_type, sync_vectors,
     reenrich_user_notes, untag_place,
 )
 from places import (  # noqa: E402
@@ -62,14 +62,14 @@ def startup():
         "1", "true", "yes", "on"
     }
     if reingest_on_startup:
+        # re-runs the AI enrichment on every note (writes to MongoDB)
         logging.info("Re-ingesting all notes into ChromaDB...")
         process_all_notes()
         logging.info("Startup ingestion complete.")
     else:
-        logging.info(
-            "Skipping startup re-ingestion."
-            " Set REINGEST_ON_STARTUP=true to enable it."
-        )
+        # the default: only embed what ChromaDB is missing, notes unchanged
+        logging.info("Syncing ChromaDB with MongoDB (REINGEST_ON_STARTUP=true re-runs enrichment)")
+        sync_vectors()
 
 
 @app.get("/")

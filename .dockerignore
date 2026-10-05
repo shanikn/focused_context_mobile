@@ -1,8 +1,53 @@
+# Only the backend goes into the image. Secrets come from Azure app settings.
+
+# the phone app
+mobile/
+
+# secrets: env files and Firebase / service account keys, wherever they are
 .env
-venv/
-__pycache__/
-*.pyc
+.env.*
+**/.env
+**/.env.*
+*firebase*.json
+**/*firebase*.json
+*serviceAccount*.json
+**/*serviceAccount*.json
+*service-account*.json
+**/*service-account*.json
+*adminsdk*.json
+**/*adminsdk*.json
+
+# version control and local tooling
 .git/
-chroma_db/
+.gitignore
+.github/
+.claude/
+.vscode/
+.idea/
+
+# python environments and caches
+venv/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+**/.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# tests and local data (ChromaDB is rebuilt from MongoDB at startup)
 tests/
+chroma_db/
+chroma_db_test/
+backups/
+
+# local scratch files
 simulate_context.py
+*.patch
+*.log
+login-plan.md
+review-ideas.md
+google-play-checklist.md
