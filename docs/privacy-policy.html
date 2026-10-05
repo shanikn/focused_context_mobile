@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Mind – Privacy Policy</title>
+<style>
+  :root { color-scheme: light dark; --text: #1b1f1c; --muted: #5a635d; --bg: #f7f8f5; --card: #ffffff; --accent: #1f7a3a; --line: #dde3dc; }
+  @media (prefers-color-scheme: dark) {
+    :root { --text: #e6ebe7; --muted: #a3ada6; --bg: #0f1411; --card: #171d19; --accent: #6cc48a; --line: #2a332d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.7rem; margin: 0 0 4px; color: var(--accent); }
+  h2 { font-size: 1.2rem; margin: 32px 0 8px; }
+  p, li { color: var(--text); }
+  .muted { color: var(--muted); font-size: 0.95rem; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 4px 18px 12px; margin-top: 16px; }
+  ul { padding-left: 20px; }
+  li { margin: 6px 0; }
+  a { color: var(--accent); }
+  code { font-size: 0.95em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Smart Mind – Privacy Policy</h1>
+  <p class="muted">Effective date: October 6, 2026</p>
+
+  <p>Smart Mind is a note app that reminds you of the right notes at the right place and time. It was built as a
+  university project. This policy explains what the app collects, why, where it is stored, and how you can delete it.</p>
+  <!-- TODO: replace REPLACE_WITH_CONTACT_EMAIL (twice on this page) with your contact email -->
+  <p>Questions: <a href="mailto:REPLACE_WITH_CONTACT_EMAIL">REPLACE_WITH_CONTACT_EMAIL</a></p>
+
+  <section>
+    <h2>What we collect and why</h2>
+    <ul>
+      <li><strong>Your account.</strong> Sign-in is handled by Google Firebase Authentication. It stores your email
+        address and a user ID. If you sign in with Google, Firebase also receives the basic profile Google shares
+        (name and profile photo). If you sign in with email and password, your password is handled by Firebase; we
+        never see it. Our server receives only your user ID, to keep your data separate from everyone else's.</li>
+      <li><strong>Your notes.</strong> The text you write, plus details the app adds or you set: the kind of note
+        (to-do, errand, idea, event), a place, a time or date, a folder, whether alerts are on, and your feedback on
+        reminders. To find the notes that matter right now, our server also computes a numerical representation of
+        each note's text (an "embedding") and stores it with the note.</li>
+      <li><strong>Your saved places.</strong> Place names (Home, Uni, Gym…) and keywords are stored on our server so
+        notes can be linked to them. <strong>A place's location, address and radius stay on your phone</strong>; they
+        are not sent to our server.</li>
+      <li><strong>Your location.</strong> If you allow it (including in the background), the app uses your location
+        <strong>on your phone</strong> to notice when you arrive at one of your saved places or at a store you have
+        errands for. Your location history is not stored or uploaded. Your location leaves the phone only in these
+        cases, and is not stored by us:
+        <ul>
+          <li>To find stores near you for your open errands: your approximate position is sent to our server, which
+            asks OpenStreetMap's Overpass service (rounded to about 100 m).</li>
+          <li>When you pick a point on the map or paste coordinates or a Google Maps link: that point (or link) is
+            sent to our server to find its address.</li>
+        </ul>
+      </li>
+      <li><strong>Address searches.</strong> The words you search for are sent to our server, which looks them up
+        with Google Places (Google Maps Platform) or OpenStreetMap Nominatim. Short Google Maps links you paste are
+        opened by our server only to read the coordinates in them.</li>
+      <li><strong>Maps.</strong> The map screen loads map images directly from OpenStreetMap's tile servers and the
+        map library from unpkg.com. Like any website, these services see your IP address and which map area is
+        shown.</li>
+      <li><strong>Settings on your phone.</strong> Preferences such as colors, appearance, alert options and your
+        current place are stored only on your phone.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>What we don't do</h2>
+    <ul>
+      <li>No ads.</li>
+      <li>No analytics, tracking or crash-reporting tools in the app.</li>
+      <li>We don't sell your data or share it for advertising.</li>
+      <li>Reminders are created on your phone; we don't use a push-notification service.</li>
+      <li>Our server logs record note IDs and technical errors, not the text of your notes.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Where your data is stored</h2>
+    <ul>
+      <li>Notes and place names: a MongoDB Atlas database.</li>
+      <li>Our server, including the note embeddings: Microsoft Azure.</li>
+      <li>Your sign-in account: Google Firebase.</li>
+    </ul>
+    <p>Data travels between the app and these services over encrypted connections (HTTPS). Each user can only reach
+    their own notes and places.</p>
+  </section>
+
+  <section>
+    <h2>Keeping and deleting your data</h2>
+    <p>Your data is kept until you delete it. You can delete single notes and places in the app at any time.</p>
+    <p><strong>Delete your account:</strong> in the app, open <em>Settings → Delete account</em>, type DELETE and
+    confirm. This deletes all your notes, your places, their copies on our server, and your sign-in account, and
+    clears the app's data on your phone. You can also ask us by email; see
+    <a href="delete-account.html">how to delete your account</a>.</p>
+    <p>Copies in our hosting providers' backups, if any, are removed when those backups expire.</p>
+  </section>
+
+  <section>
+    <h2>Children</h2>
+    <p>Smart Mind is not directed at children under 13, and we don't knowingly collect data from them.</p>
+  </section>
+
+  <section>
+    <h2>Changes</h2>
+    <p>If this policy changes, we'll update it on this page and change the effective date above.</p>
+    <p>Contact: <a href="mailto:REPLACE_WITH_CONTACT_EMAIL">REPLACE_WITH_CONTACT_EMAIL</a></p>
+  </section>
+</main>
+</body>
+</html>
