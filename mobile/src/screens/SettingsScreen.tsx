@@ -50,7 +50,7 @@ import {
   setCategoryColor,
 } from "../lib/categoryColors";
 import { Card, Chip, ChipRow, TextButton, ToggleRow } from "../components/ui";
-import { MIN_TOUCH_TARGET, Theme, fonts, spacing } from "../theme";
+import { MIN_TOUCH_TARGET, Theme, fonts, radius, spacing } from "../theme";
 import { useTheme, useThemedStyles } from "../ThemeContext";
 import { APPEARANCE_OPTIONS, AppearancePref } from "../lib/appearance";
 
@@ -211,18 +211,25 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleClearCoords = (place: UserPlace) => {
-    Alert.alert("Forget location", `Forget where ${place.name} is on this phone?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Forget",
-        style: "destructive",
-        onPress: async () => {
-          await removePlaceCoords(place.id);
-          await afterPlacesChanged();
+  // clears the address and radius on this phone and re-registers the geofences
+  // without it; the place itself (and the notes tagged with it) stays
+  const handleRemovePlace = (place: UserPlace) => {
+    Alert.alert(
+      "Remove place",
+      `Remove ${place.name}'s address and radius from this phone? Arrival alerts for ${place.name} stop. ` +
+        `Your notes keep their text and stay linked to ${place.name}, and you can set a new location any time.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            await removePlaceCoords(place.id);
+            await afterPlacesChanged();
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   const handleDeletePlace = (place: UserPlace) => {
@@ -361,9 +368,6 @@ export default function SettingsScreen() {
       { text: "Search address", onPress: () => setAddressFor(place) },
       { text: "Rename", onPress: () => setEditor({ place }) },
     ];
-    if (place.coords) {
-      buttons.push({ text: "Forget location", onPress: () => handleClearCoords(place) });
-    }
     buttons.push(
       { text: "Delete", style: "destructive", onPress: () => handleDeletePlace(place) },
       { text: "Cancel", style: "cancel" }
@@ -464,6 +468,16 @@ export default function SettingsScreen() {
                         />
                       ))}
                     </ChipRow>
+                    <TouchableOpacity
+                      style={styles.removePlace}
+                      onPress={() => handleRemovePlace(place)}
+                      disabled={savingPlaceId !== null}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove place ${place.name}`}
+                    >
+                      <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                      <Text style={styles.removePlaceText}>Remove place</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>
@@ -614,6 +628,18 @@ const makeStyles = ({ colors, type }: Theme) =>
     justifyContent: "center",
   },
   radiusRow: { marginTop: 10, marginLeft: 52, gap: 6 },
+  removePlace: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: MIN_TOUCH_TARGET,
+    paddingHorizontal: 14,
+    borderRadius: radius.chip,
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  removePlaceText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.danger },
   addPlaceRow: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 4 },
   colorRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: MIN_TOUCH_TARGET + 4 },
   rowDivider: { borderTopWidth: 1, borderTopColor: colors.border },

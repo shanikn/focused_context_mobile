@@ -147,18 +147,11 @@ test("a place with a location: subtitle with address and radius, radius chips re
   expect(syncGeofencing).toHaveBeenCalled();
 });
 
-test("the ⋯ menu offers every place action (Forget only when a location is set)", async () => {
+test("the ⋯ menu offers the other place actions (removing the location is its own button)", async () => {
   await setPlaceCoords("id-home", { latitude: 1, longitude: 2 });
   const tree = await renderScreen();
   await act(async () => byLabel(tree, "Home options").props.onPress());
-  expect(lastAlertButtons()).toEqual([
-    "Use current location",
-    "Search address",
-    "Rename",
-    "Forget location",
-    "Delete",
-    "Cancel",
-  ]);
+  expect(lastAlertButtons()).toEqual(["Use current location", "Search address", "Rename", "Delete", "Cancel"]);
   await act(async () => byLabel(tree, "Gym options").props.onPress());
   expect(lastAlertButtons()).toEqual(["Use current location", "Search address", "Rename", "Delete", "Cancel"]);
 });
@@ -193,4 +186,46 @@ test("Appearance: System / Light / Dark, default System, saved on the phone", as
   await act(async () => byLabel(tree, "Appearance: Dark").props.onPress());
   expect(byLabel(tree, "Appearance: Dark").props.accessibilityState.selected).toBe(true);
   expect(await AsyncStorage.getItem("focusedcontext.appearance")).toBe("dark");
+});
+
+describe("Remove place", () => {
+  const hasLabel = (tree: ReactTestRenderer, label: string) =>
+    tree.root.findAllByType(TouchableOpacity).some((t) => t.props.accessibilityLabel === label);
+
+  beforeEach(async () => {
+    await setPlaceCoords("id-home", { latitude: 1, longitude: 2 }, 400, { source: "address", address: "Herzl 1" });
+  });
+
+  test("a visible button on each place with a location, none on places without one", async () => {
+    const tree = await renderScreen();
+    expect(byLabel(tree, "Remove place Home")).toBeTruthy();
+    expect(allText(byLabel(tree, "Remove place Home"))).toContain("Remove place");
+    expect(hasLabel(tree, "Remove place Gym")).toBe(false);
+  });
+
+  test("asks to confirm; Cancel keeps everything", async () => {
+    const tree = await renderScreen();
+    await act(async () => byLabel(tree, "Remove place Home").props.onPress());
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Remove place");
+    expect(alertSpy.mock.calls.at(-1)?.[1]).toMatch(/Home.*address and radius.*arrival alerts.*notes/is);
+    expect(lastAlertButtons()).toEqual(["Cancel", "Remove"]);
+    await pressAlertButton("Cancel").catch(() => {}); // Cancel has no handler
+    expect((await getAllCoords())["id-home"]).toBeDefined();
+  });
+
+  test("Remove clears the address and radius and stops arrival alerts; the place and its notes stay", async () => {
+    const { deletePlace } = jest.requireMock("../api/places");
+    const tree = await renderScreen();
+    await act(async () => byLabel(tree, "Remove place Home").props.onPress());
+    (syncGeofencing as jest.Mock).mockClear();
+    await pressAlertButton("Remove");
+    expect((await getAllCoords())["id-home"]).toBeUndefined();
+    expect(syncGeofencing).toHaveBeenCalled(); // geofences re-registered without Home
+    expect(deletePlace).not.toHaveBeenCalled(); // the place and its note tags stay
+    const text = allText(tree.root);
+    expect(text).toContain("Home");
+    expect(text).toContain("No location set");
+    expect(hasLabel(tree, "Home radius 400 m")).toBe(false);
+    expect(hasLabel(tree, "Remove place Home")).toBe(false);
+  });
 });
