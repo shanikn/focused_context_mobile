@@ -13,6 +13,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { AddressResult, searchErrorMessage } from "../lib/nominatim";
 import { findAddress } from "../services/addressSearch";
+import { ADDRESS_INPUT_PROPS } from "./addressInputProps";
 import { PrimaryButton, TextButton } from "./ui";
 import { MIN_TOUCH_TARGET, Theme, fonts, radius } from "../theme";
 import { useTheme, useThemedStyles } from "../ThemeContext";
@@ -96,7 +97,8 @@ export default function AddressSearchModal({
           <Text style={styles.title}>Find {placeName} by address</Text>
           <View style={styles.searchRow}>
             <TextInput
-              style={styles.input}
+              {...ADDRESS_INPUT_PROPS}
+              style={[styles.input, styles.rtlAware]}
               value={query}
               onChangeText={setQuery}
               placeholder="Street, city"
@@ -183,6 +185,8 @@ export default function AddressSearchModal({
 
 const makeStyles = ({ colors, type }: Theme) =>
   StyleSheet.create({
+  // Hebrew reads right-to-left inside the LTR layout
+  rtlAware: { writingDirection: "auto" },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",

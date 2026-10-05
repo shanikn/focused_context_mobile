@@ -121,3 +121,24 @@ test("a new search clears the previous selection", async () => {
   expect(tree.root.findAllByProps({ testID: "selected-address" })).toHaveLength(0);
   expect(buttonWithText(tree, "Save as Uni").props.disabled).toBe(true);
 });
+
+describe("Hebrew input", () => {
+  test("a plain text keyboard (no type that hides the Hebrew layout), no auto-caps or autocorrect, RTL-aware", async () => {
+    const tree = await renderAndSearch(jest.fn());
+    const input = tree.root.findByType(TextInput);
+    expect(input.props.keyboardType ?? "default").toBe("default");
+    expect(input.props.autoCapitalize).toBe("none");
+    expect(input.props.autoCorrect).toBe(false);
+    expect([input.props.style].flat(3).some((s: { writingDirection?: string } | undefined) => s?.writingDirection === "auto")).toBe(
+      true
+    );
+  });
+
+  test("a Hebrew query reaches the search unchanged", async () => {
+    const tree = await renderAndSearch(jest.fn());
+    (findAddress as jest.Mock).mockClear();
+    await act(async () => tree.root.findByType(TextInput).props.onChangeText("רוטשילד 10, תל אביב"));
+    await act(async () => tree.root.findByType(TextInput).props.onSubmitEditing());
+    expect(findAddress).toHaveBeenCalledWith("רוטשילד 10, תל אביב");
+  });
+});

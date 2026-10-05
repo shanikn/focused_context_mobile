@@ -1,4 +1,12 @@
-import { addressNear, DEFAULT_VIEW, initialMapView, mapHtml, MAP_BASE_URL, parseMapMessage } from "./mapPick";
+import {
+  addressNear,
+  DEFAULT_VIEW,
+  initialMapView,
+  jumpToScript,
+  mapHtml,
+  MAP_BASE_URL,
+  parseMapMessage,
+} from "./mapPick";
 import { UserPlace } from "./userPlaces";
 
 const place = (coords: UserPlace["coords"]): UserPlace => ({
@@ -85,5 +93,16 @@ describe("the map page", () => {
 
   test("a base URL so tile requests carry a Referer (OSM blocks WebViews without one)", () => {
     expect(MAP_BASE_URL).toMatch(/^https:\/\//);
+  });
+});
+
+describe("jumping to a search result", () => {
+  test("moves the map (the page then reports the new center)", () => {
+    expect(jumpToScript({ latitude: 32.0641, longitude: 34.7748 })).toBe("map.setView([32.0641, 34.7748], 17); true;");
+  });
+
+  test("only numbers get into the script", () => {
+    expect(jumpToScript({ latitude: Number("1);alert(1"), longitude: 34 })).toBe("true;");
+    expect(jumpToScript({ latitude: 95, longitude: 34 })).toBe("true;");
   });
 });

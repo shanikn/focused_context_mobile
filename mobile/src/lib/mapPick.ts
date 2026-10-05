@@ -71,6 +71,14 @@ export function addressNear(results: AddressResult[], point: LatLon): string | n
   return near ? near.label : null;
 }
 
+// moves the map to a search result; the page then reports the new center
+export function jumpToScript(point: LatLon, zoom: number = CLOSE_ZOOM): string {
+  const { latitude, longitude } = point;
+  const valid =
+    Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
+  return valid ? `map.setView([${latitude}, ${longitude}], ${Number(zoom)}); true;` : "true;";
+}
+
 export function mapHtml(view: MapView): string {
   const lat = Number(view.latitude);
   const lon = Number(view.longitude);

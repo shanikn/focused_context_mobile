@@ -60,7 +60,9 @@ def test_request_matches_nominatim_policy(upstream):
     req = calls[0]
     url = urlparse(req.full_url)
     assert url.scheme == "https" and url.netloc == "nominatim.openstreetmap.org" and url.path == "/search"
-    assert parse_qs(url.query) == {"q": ["Reichman University"], "format": ["jsonv2"], "limit": ["5"]}
+    assert parse_qs(url.query) == {
+        "q": ["Reichman University"], "format": ["jsonv2"], "limit": ["5"], "accept-language": ["he,en"],
+    }
     assert "FocusedContext" in req.get_header("User-agent")
 
 
@@ -185,3 +187,71 @@ def test_places_search_does_not_clash_with_place_routes(upstream):
     # GET /places/ still lists places; /places/search is the search
     assert isinstance(client.get("/places/").json(), list)
     assert client.get("/places/search", params={"q": "Reichman University"}).status_code == 200
+
+
+# ---- Hebrew, and looser retries for English ----
+
+def _queries(calls):
+    return [parse_qs(urlparse(c.full_url).query)["q"][0] for c in calls]
+
+
+def test_hebrew_goes_to_nominatim_as_is_with_hebrew_labels(upstream):
+    calls, _ = upstream
+    geocode.search("רוטשילד 10, תל אביב")
+    query = parse_qs(urlparse(calls[0].full_url).query)
+    assert query["q"] == ["רוטשילד 10, תל אביב"]
+    assert query["accept-language"] == ["he,en"]
+
+
+def test_hebrew_with_no_results_isnt_retried(upstream):
+    calls, state = upstream
+    state["body"] = []
+    assert geocode.search("פנחס רוזן 72") == []
+    assert len(calls) == 1
+
+
+def test_english_with_results_isnt_retried(upstream):
+    calls, _ = upstream
+    geocode.search("Pinchas Rozen 72, Tel Aviv")
+    assert len(calls) == 1
+
+
+def test_variants_spelling_and_first_name():
+    assert geocode.query_variants("Pinchas Rozen 72, Tel Aviv") == [
+        "Pinchas Rosen 72, Tel Aviv",
+        "Rozen 72, Tel Aviv",
+        "Rosen 72, Tel Aviv",
+    ]
+    assert geocode.query_variants("Rosen 5") == ["Rozen 5"]
+    # one word, nothing to loosen; the city is never changed
+    assert geocode.query_variants("Rothschild 10, Tel Aviv") == []
+    assert geocode.query_variants("Herzl 1, Rosh HaAyin") == []
+    # coordinates and Hebrew aren't loosened
+    assert geocode.query_variants("32.1663,34.8433") == []
+    assert geocode.query_variants("פנחס רוזן 72") == []
+
+
+def test_english_with_no_results_retries_looser_variants(upstream, monkeypatch):
+    calls, _ = upstream
+    found = [{"display_name": "Pinchas Rosen St 72, Tel Aviv", "lat": "32.11", "lon": "34.80"}]
+
+    def fake(request, timeout):
+        calls.append(request)
+        q = parse_qs(urlparse(request.full_url).query)["q"][0]
+        return FakeResponse(json.dumps(found if q == "Rozen 72, Tel Aviv" else []).encode())
+
+    monkeypatch.setattr(geocode, "urlopen", fake)
+    results = geocode.search("Pinchas Rozen 72, Tel Aviv")
+    assert [r["label"] for r in results] == ["Pinchas Rosen St 72, Tel Aviv"]
+    assert _queries(calls) == ["Pinchas Rozen 72, Tel Aviv", "Pinchas Rosen 72, Tel Aviv", "Rozen 72, Tel Aviv"]
+    # the original query now answers from the cache
+    geocode.search("Pinchas Rozen 72, Tel Aviv")
+    assert len(calls) == 3
+
+
+def test_retries_are_capped(upstream):
+    calls, state = upstream
+    state["body"] = []
+    assert geocode.search("Pinchas Rozen 72, Tel Aviv") == []
+    assert len(calls) == 1 + geocode.MAX_VARIANT_TRIES
+    assert geocode.MAX_VARIANT_TRIES <= 3

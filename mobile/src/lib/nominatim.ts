@@ -26,6 +26,8 @@ export function buildSearchUrl(query: string): string {
     q: cleanQuery(query),
     format: "jsonv2",
     limit: String(MAX_RESULTS),
+    // labels in Hebrew where OpenStreetMap has them, else English
+    "accept-language": "he,en",
   });
   return `${SEARCH_URL}?${params.toString()}`;
 }

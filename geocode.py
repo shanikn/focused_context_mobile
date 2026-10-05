@@ -17,6 +17,10 @@ from urllib.request import Request, urlopen
 SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "FocusedContext/1.0 (university project; contextmind-api.azurewebsites.net)"
 MAX_RESULTS = 5
+# labels in Hebrew where OSM has them, else English
+ACCEPT_LANGUAGE = "he,en"
+# extra, looser queries tried when an English search finds nothing
+MAX_VARIANT_TRIES = 3
 TIMEOUT_SECONDS = 10
 MIN_INTERVAL_SECONDS = 1.0
 CACHE_TTL_SECONDS = 10 * 60
@@ -71,7 +75,8 @@ def _parse(raw) -> list:
 
 
 def _fetch(query: str) -> list:
-    url = f"{SEARCH_URL}?{urlencode({'q': query, 'format': 'jsonv2', 'limit': MAX_RESULTS})}"
+    params = {"q": query, "format": "jsonv2", "limit": MAX_RESULTS, "accept-language": ACCEPT_LANGUAGE}
+    url = f"{SEARCH_URL}?{urlencode(params)}"
     request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
     try:
         with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
@@ -87,12 +92,56 @@ def _fetch(query: str) -> list:
         raise GeocodeError("bad_response")
 
 
-def search(query: str) -> list:
-    """Up to 5 results as {label, latitude, longitude}. Raises GeocodeError."""
-    global _last_request
-    cleaned = clean_query(query)
-    if not cleaned:
+_HEBREW = re.compile("[%s-%s]" % (chr(0x0590), chr(0x05FF)))  # the Hebrew block
+_LATIN = re.compile("[A-Za-z]")
+_COORDINATES = re.compile(r"^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$")
+# s or z between vowels: Rozen / Rosen, Weizman / Weisman
+_S_OR_Z = re.compile(r"(?<=[aeiou])[sz](?=[aeiou])", re.IGNORECASE)
+
+
+_S_Z_SWAP = {"s": "z", "z": "s", "S": "Z", "Z": "S"}
+
+
+def _swap_s_z(text: str) -> str:
+    return _S_OR_Z.sub(lambda m: _S_Z_SWAP[m.group(0)], text)
+
+
+def _drop_first_name(street: str) -> str:
+    """'Pinchas Rozen 72' -> 'Rozen 72': streets named after people are often
+    known by the surname only. Needs two or more words before the number."""
+    words = street.split(" ")
+    names = []
+    for w in words:
+        if any(ch.isdigit() for ch in w):
+            break
+        names.append(w)
+    if len(names) < 2:
+        return street
+    return " ".join(words[1:])
+
+
+def query_variants(query: str) -> list:
+    """Looser versions of an English address query, most likely first:
+    other s/z spelling, then without the first name, then both. Only the
+    street part (before the first comma) changes. Hebrew and coordinates
+    aren't loosened."""
+    if _HEBREW.search(query) or not _LATIN.search(query) or _COORDINATES.match(query):
         return []
+    street, comma, rest = query.partition(",")
+    street = street.strip()
+    tail = f",{rest}" if comma else ""
+    without_first = _drop_first_name(street)
+    candidates = [_swap_s_z(street), without_first, _swap_s_z(without_first)]
+    variants = []
+    for c in candidates:
+        v = f"{c}{tail}"
+        if c and v != query and v not in variants:
+            variants.append(v)
+    return variants
+
+
+def _lookup(cleaned: str) -> list:
+    global _last_request
     key = cleaned.lower()
     with _lock:
         hit = _cache.get(key)
@@ -104,7 +153,30 @@ def search(query: str) -> list:
             _sleep(wait)
         _last_request = _now()
         results = _fetch(cleaned)
-        if len(_cache) >= CACHE_MAX_ENTRIES:
-            _cache.pop(next(iter(_cache)))
-        _cache[key] = (_now(), results)
+        _remember(key, results)
         return results
+
+
+def _remember(key: str, results: list):
+    if key not in _cache and len(_cache) >= CACHE_MAX_ENTRIES:
+        _cache.pop(next(iter(_cache)))
+    _cache[key] = (_now(), results)
+
+
+def search(query: str) -> list:
+    """Up to 5 results as {label, latitude, longitude}. An English query that
+    finds nothing is retried with up to MAX_VARIANT_TRIES looser variants.
+    Raises GeocodeError."""
+    cleaned = clean_query(query)
+    if not cleaned:
+        return []
+    results = _lookup(cleaned)
+    if results:
+        return results
+    for variant in query_variants(cleaned)[:MAX_VARIANT_TRIES]:
+        results = _lookup(variant)
+        if results:
+            with _lock:
+                _remember(cleaned.lower(), results)  # the original query answers from the cache next time
+            return results
+    return []

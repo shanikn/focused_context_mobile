@@ -15,6 +15,12 @@ describe("buildSearchUrl", () => {
     expect(url.searchParams.get("q")).toBe("Herzliya Pituah 4");
     expect(url.searchParams.get("format")).toBe("jsonv2");
     expect(url.searchParams.get("limit")).toBe("5");
+    // labels in Hebrew where OpenStreetMap has them, else English
+    expect(url.searchParams.get("accept-language")).toBe("he,en");
+  });
+
+  test("Hebrew goes through unchanged", () => {
+    expect(new URL(buildSearchUrl("רוטשילד 10, תל אביב")).searchParams.get("q")).toBe("רוטשילד 10, תל אביב");
   });
 
   test("removes invisible direction marks a Hebrew keyboard can add (RTL)", () => {
