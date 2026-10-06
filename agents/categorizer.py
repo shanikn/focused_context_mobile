@@ -278,21 +278,87 @@ def _semantic_match(content: str, places: list):
     return None
 
 
+# ---- matching a note to the place it names ----
+#
+# A place matches when the note has its full name, or any word of the name
+# that's at least 3 letters long, or one of its keywords; whole words only,
+# any capitals ("Evyatar's" is "evyatar" + "s"). Hebrew attaches up to three
+# prefix letters to a word (ו ה ב ל מ ש כ: "לשדרות", "ובשדרות"); they're
+# stripped only when the rest is a whole word of a place name. The place
+# with the most matching words wins; then a full-name match; then the
+# user's own places over Home/Uni/Work; then the order of the places.
+
+MIN_NAME_WORD = 3
+_HEBREW_PREFIX_LETTERS = frozenset(chr(c) for c in (0x05D5, 0x05D4, 0x05D1, 0x05DC, 0x05DE, 0x05E9, 0x05DB))
+_MAX_HEBREW_PREFIX = 3
+_HEBREW_LETTER = re.compile("[%s-%s]" % (chr(0x05D0), chr(0x05EA)))
+
+
+def _tokens(text: str) -> list:
+    return re.findall(r"\w+", text.lower())
+
+
+def _token_is(token: str, word: str) -> bool:
+    """The note's token is this name word, maybe with Hebrew prefixes."""
+    if token == word:
+        return True
+    if not _HEBREW_LETTER.match(word) or not token.endswith(word):
+        return False
+    prefix = token[:-len(word)]
+    return len(prefix) <= _MAX_HEBREW_PREFIX and all(ch in _HEBREW_PREFIX_LETTERS for ch in prefix)
+
+
+def _has_full_name(tokens: list, name_words: list) -> bool:
+    n = len(name_words)
+    if n == 0:
+        return False
+    for i in range(len(tokens) - n + 1):
+        if _token_is(tokens[i], name_words[0]) and tokens[i + 1:i + n] == name_words[1:]:
+            return True
+    return False
+
+
+def _name_score(place, tokens: list, text: str) -> tuple:
+    """(matching words, full name matched) for one place."""
+    name_words = _tokens(place.name)
+    long_words = {w for w in name_words if len(w) >= MIN_NAME_WORD}
+    matched = {w for w in long_words if any(_token_is(t, w) for t in tokens)}
+    keyword_hits = sum(1 for k in place.keywords if k and _has_word(text, k.lower()))
+    full = _has_full_name(tokens, name_words)
+    count = len(matched) + keyword_hits
+    if full and count == 0:
+        count = 1  # a name made only of short words, e.g. "TA"
+    return count, full
+
+
+def match_place_by_name(content: str, places: list):
+    """The place whose name (or keyword) the note mentions most, or None."""
+    text = content.lower()
+    tokens = _tokens(content)
+    best, best_key = None, None
+    for index, place in enumerate(places):
+        count, full = _name_score(place, tokens, text)
+        if count == 0:
+            continue
+        key = (count, full, place.kind is None, -index)
+        if best_key is None or key > best_key:
+            best, best_key = place, key
+    return best
+
+
 def infer_place(content: str, places: list):
     """The user's place a note belongs to, or None.
-    1. the user's own places by name or keyword (most specific first)
+    1. a place the note names (match_place_by_name)
     2. the built-in keywords of Home / Uni / Work
     3. semantic similarity between the note and each place's name + keywords
     """
     if not places:
         return None
+    named = match_place_by_name(content, places)
+    if named:
+        return named
     text = content.lower()
-    custom = [p for p in places if p.kind is None]
-    for place in custom:
-        if any(_has_word(text, w) for w in _place_words(place)):
-            return place
     for place in places:
-        words = kind_keywords.get(place.kind, []) + _place_words(place)
-        if place.kind and any(_has_word(text, w) for w in words):
+        if place.kind and any(_has_word(text, w) for w in kind_keywords.get(place.kind, [])):
             return place
     return _semantic_match(content, places)
