@@ -57,6 +57,17 @@ export function setAuthTokenProvider(provider: AuthTokenProvider | null) {
   tokenProvider = provider;
 }
 
+// who is signed in (set with the token provider), for data kept on the phone per user
+let userIdProvider: (() => string | null) | null = null;
+
+export function setCurrentUserIdProvider(provider: (() => string | null) | null) {
+  userIdProvider = provider;
+}
+
+export function currentUserId(): string | null {
+  return userIdProvider ? userIdProvider() : null;
+}
+
 // called when a request is still rejected (401) after refreshing the token
 export function setOnAuthExpired(callback: (() => void) | null) {
   onAuthExpired = callback;

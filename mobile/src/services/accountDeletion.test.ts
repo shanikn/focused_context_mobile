@@ -29,6 +29,7 @@ beforeEach(async () => {
   await AsyncStorage.multiSet([
     ["focusedcontext.placeCoords", "{}"],
     ["smartmind.storeAlerts.errands", "[]"],
+    ["focusedcontext.alertNotes", '{"userId":"uid-a","notes":[]}'],
   ]);
   (deleteAccount as jest.Mock).mockImplementation(async () => {
     order.push("server");
@@ -55,6 +56,7 @@ test("if the server fails, nothing on the phone changes and you stay signed in",
   await expect(deleteAccountAndSignOut()).rejects.toThrow("API error 502");
   expect(signOut).not.toHaveBeenCalled();
   expect([...(await AsyncStorage.getAllKeys())].sort()).toEqual([
+    "focusedcontext.alertNotes",
     "focusedcontext.placeCoords",
     "smartmind.storeAlerts.errands",
   ]);

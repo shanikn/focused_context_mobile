@@ -1,6 +1,6 @@
 import { signOut } from "firebase/auth";
 import { auth } from "../config/firebase";
-import { setAuthTokenProvider, setOnAuthExpired } from "../api/client";
+import { setAuthTokenProvider, setCurrentUserIdProvider, setOnAuthExpired } from "../api/client";
 import { clearReminderSchedule } from "./scheduledReminders";
 
 // Connects the API client to Firebase: a fresh ID token for every request,
@@ -10,6 +10,7 @@ export function connectApiToFirebase() {
     const user = auth.currentUser;
     return user ? user.getIdToken(forceRefresh) : null;
   });
+  setCurrentUserIdProvider(() => auth.currentUser?.uid ?? null);
   setOnAuthExpired(() => {
     signOut(auth).catch(() => {});
     // the next user mustn't get this user's alarms

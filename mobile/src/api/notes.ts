@@ -1,4 +1,5 @@
-import { apiRequest } from "./client";
+import { apiRequest, currentUserId } from "./client";
+import { removeAlertNote, saveAlertNotes } from "../services/alertNotesCache";
 import { Note } from "../types/notes";
 
 export async function createNote(
@@ -34,8 +35,18 @@ export async function createNote(
   });
 }
 
+// every successful load also refreshes the notes kept for offline arrival alerts
 export async function getNotes(): Promise<Note[]> {
-  return apiRequest("/notes/");
+  const notes: Note[] = await apiRequest("/notes/");
+  const userId = currentUserId();
+  if (userId && Array.isArray(notes)) {
+    try {
+      await saveAlertNotes(notes, userId);
+    } catch {
+      // the cache is a convenience; loading the notes still worked
+    }
+  }
+  return notes;
 }
 
 export async function updateNote(
@@ -68,7 +79,10 @@ export async function updateNote(
 }
 
 export async function deleteNote(noteId: string): Promise<{ message: string }> {
-  return apiRequest(`/notes/${noteId}`, {
+  const result = await apiRequest(`/notes/${noteId}`, {
     method: "DELETE",
   });
+  // a deleted note mustn't show up in an offline arrival alert
+  await removeAlertNote(noteId).catch(() => {});
+  return result;
 }

@@ -11,6 +11,9 @@ import {
 import { getScheduledNoteIds } from "./scheduledReminders";
 import { canAlert } from "../lib/alertRules";
 import { arrivalCandidates } from "../lib/arrivalNotes";
+import { offlineReminders } from "../lib/offlineArrival";
+import { currentUserId } from "../api/client";
+import { readAlertNotes } from "./alertNotesCache";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -27,6 +30,7 @@ export interface ReminderCheckResult {
   location: string;
   notificationsEnabled: boolean;
   permissionGranted: boolean;
+  offline: boolean; // the server couldn't be reached; notes saved at the last sync were used
 }
 
 function getCurrentSlot(now: Date): string {
@@ -87,14 +91,24 @@ export async function ensureNotificationPermissions(): Promise<boolean> {
   return requested.granted;
 }
 
+// The server's choice for where I am; if it can't be reached (no signal, a
+// sign-in token that can't be refreshed offline...), the same choice made on
+// the phone from the notes saved at the last sync.
 export async function fetchCurrentReminders(): Promise<{
   reminders: Note[];
   location: string;
+  offline: boolean;
 }> {
   const now = new Date();
   const location = await getReminderLocation();
-  const reminders = await getReminders(location, now.getHours(), now.getMinutes());
-  return { reminders, location };
+  try {
+    const reminders = await getReminders(location, now.getHours(), now.getMinutes());
+    return { reminders, location, offline: false };
+  } catch (e) {
+    console.log("Reminders: server unreachable, using notes saved on the phone", e);
+    const saved = await readAlertNotes(currentUserId());
+    return { reminders: offlineReminders(saved, location, now), location, offline: true };
+  }
 }
 
 export async function checkAndNotifyReminders(
@@ -105,7 +119,7 @@ export async function checkAndNotifyReminders(
     ? await ensureNotificationPermissions()
     : false;
 
-  const { reminders, location } = await fetchCurrentReminders();
+  const { reminders, location, offline } = await fetchCurrentReminders();
 
   if (!notificationsEnabled || !permissionGranted) {
     return {
@@ -114,6 +128,7 @@ export async function checkAndNotifyReminders(
       location,
       notificationsEnabled,
       permissionGranted,
+      offline,
     };
   }
 
@@ -166,5 +181,6 @@ export async function checkAndNotifyReminders(
     location,
     notificationsEnabled,
     permissionGranted,
+    offline,
   };
 }

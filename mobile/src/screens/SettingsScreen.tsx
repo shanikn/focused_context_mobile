@@ -53,6 +53,7 @@ import MapPickerModal from "../components/MapPickerModal";
 import PasteLocationModal from "../components/PasteLocationModal";
 import DeleteAccountModal from "../components/DeleteAccountModal";
 import { deleteAccountAndSignOut } from "../services/accountDeletion";
+import { clearOfflineData } from "../services/alertNotesCache";
 import LocationWaysSheet, { LocationWay } from "../components/LocationWaysSheet";
 import { initialMapView, MapView } from "../lib/mapPick";
 import { LatLon } from "../lib/geo";
@@ -391,8 +392,9 @@ export default function SettingsScreen() {
             (p) => p.providerId === "google.com"
           );
           await signOut(auth);
-          // the next user mustn't get this user's alarms
+          // the next user mustn't get this user's alarms or offline notes
           clearReminderSchedule().catch(() => {});
+          await clearOfflineData().catch(() => {});
           if (!usedGoogle) {
             return;
           }
