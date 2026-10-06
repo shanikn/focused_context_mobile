@@ -460,6 +460,7 @@ describe("the folder filter", () => {
     store.addFolder.mockResolvedValue(["Art", "Games", "Trips"]);
     const tree = await renderScreen();
     await act(async () => byLabel(tree, "Create a new folder").props.onPress());
+    expect(allText(tree)).toContain("Create New Folder");
     const input = tree.root.findAllByType(TextInput).find((t) => t.props.placeholder === "Folder name")!;
     await act(async () => input.props.onChangeText("Art"));
     await act(async () => byLabel(tree, "Create").props.onPress());

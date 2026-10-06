@@ -333,13 +333,13 @@ export default function SettingsScreen() {
   // the place itself (and the notes tagged with it) stays
   const handleRemovePlace = (place: UserPlace) => {
     Alert.alert(
-      "Remove place",
-      `Remove ${place.name}'s address and radius from this phone? Arrival alerts for ${place.name} stop. ` +
+      "Clear location",
+      `Clear ${place.name}'s address and radius from this phone? Arrival alerts for ${place.name} stop. ` +
         `Your notes keep their text and stay linked to ${place.name}, and you can set a new location any time.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Remove",
+          text: "Clear",
           style: "destructive",
           onPress: async () => {
             await removePlaceCoords(place.id);
@@ -649,10 +649,10 @@ export default function SettingsScreen() {
                       onPress={() => handleRemovePlace(place)}
                       disabled={locating}
                       accessibilityRole="button"
-                      accessibilityLabel={`Remove place ${place.name}`}
+                      accessibilityLabel={`Clear location ${place.name}`}
                     >
                       <Ionicons name="trash-outline" size={18} color={colors.danger} />
-                      <Text style={styles.removePlaceText}>Remove place</Text>
+                      <Text style={styles.removePlaceText}>Clear location</Text>
                     </TouchableOpacity>
                   </View>
                 )}

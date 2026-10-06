@@ -436,7 +436,7 @@ export default function NotesListScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={[type.cardTitle, styles.modalTitle]}>New folder</Text>
+            <Text style={[type.cardTitle, styles.modalTitle]}>Create New Folder</Text>
             <TextInput
               style={styles.modalInput}
               placeholder="Folder name"

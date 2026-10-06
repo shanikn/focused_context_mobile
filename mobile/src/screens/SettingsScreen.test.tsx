@@ -258,7 +258,7 @@ test("Appearance: System / Light / Dark, default System, saved on the phone", as
   expect(await AsyncStorage.getItem("focusedcontext.appearance")).toBe("dark");
 });
 
-describe("Remove place", () => {
+describe("Clear location", () => {
   const hasLabel = (tree: ReactTestRenderer, label: string) =>
     tree.root.findAllByType(TouchableOpacity).some((t) => t.props.accessibilityLabel === label);
 
@@ -268,17 +268,17 @@ describe("Remove place", () => {
 
   test("a visible button on each place with a location, none on places without one", async () => {
     const tree = await renderScreen();
-    expect(byLabel(tree, "Remove place Home")).toBeTruthy();
-    expect(allText(byLabel(tree, "Remove place Home"))).toContain("Remove place");
-    expect(hasLabel(tree, "Remove place Gym")).toBe(false);
+    expect(byLabel(tree, "Clear location Home")).toBeTruthy();
+    expect(allText(byLabel(tree, "Clear location Home"))).toContain("Clear location");
+    expect(hasLabel(tree, "Clear location Gym")).toBe(false);
   });
 
   test("asks to confirm; Cancel keeps everything", async () => {
     const tree = await renderScreen();
-    await act(async () => byLabel(tree, "Remove place Home").props.onPress());
-    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Remove place");
-    expect(alertSpy.mock.calls.at(-1)?.[1]).toMatch(/Home.*address and radius.*arrival alerts.*notes/is);
-    expect(lastAlertButtons()).toEqual(["Cancel", "Remove"]);
+    await act(async () => byLabel(tree, "Clear location Home").props.onPress());
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Clear location");
+    expect(alertSpy.mock.calls.at(-1)?.[1]).toMatch(/^Clear Home's address and radius.*arrival alerts.*notes/is);
+    expect(lastAlertButtons()).toEqual(["Cancel", "Clear"]);
     await pressAlertButton("Cancel").catch(() => {}); // Cancel has no handler
     expect((await getAllCoords())["id-home"]).toBeDefined();
   });
@@ -286,9 +286,9 @@ describe("Remove place", () => {
   test("Remove clears the address and radius and stops arrival alerts; the place and its notes stay", async () => {
     const { deletePlace } = jest.requireMock("../api/places");
     const tree = await renderScreen();
-    await act(async () => byLabel(tree, "Remove place Home").props.onPress());
+    await act(async () => byLabel(tree, "Clear location Home").props.onPress());
     (syncGeofencing as jest.Mock).mockClear();
-    await pressAlertButton("Remove");
+    await pressAlertButton("Clear");
     expect((await getAllCoords())["id-home"]).toBeUndefined();
     expect(syncGeofencing).toHaveBeenCalled(); // geofences re-registered without Home
     expect(deletePlace).not.toHaveBeenCalled(); // the place and its note tags stay
@@ -296,11 +296,11 @@ describe("Remove place", () => {
     expect(text).toContain("Home");
     expect(text).toContain("No location set");
     expect(hasLabel(tree, "Home radius 400 m")).toBe(false);
-    expect(hasLabel(tree, "Remove place Home")).toBe(false);
+    expect(hasLabel(tree, "Clear location Home")).toBe(false);
   });
 });
 
-describe("Remove place and Where you are now", () => {
+describe("Clear location and Where you are now", () => {
   const { getReminderLocation } = jest.requireMock("../lib/reminderPrefs");
   let stored: string;
 
@@ -320,8 +320,8 @@ describe("Remove place and Where you are now", () => {
   });
 
   async function removePlace(tree: ReactTestRenderer, name: string) {
-    await act(async () => byLabel(tree, `Remove place ${name}`).props.onPress());
-    await pressAlertButton("Remove");
+    await act(async () => byLabel(tree, `Clear location ${name}`).props.onPress());
+    await pressAlertButton("Clear");
   }
 
   test("removing the current place sets 'Not at a place'", async () => {
@@ -342,7 +342,7 @@ describe("Remove place and Where you are now", () => {
     expect(byLabel(tree, "Gym").props.accessibilityState.selected).toBe(true);
     // Gym keeps its location
     expect((await getAllCoords())["id-gym"]).toBeDefined();
-    expect(byLabel(tree, "Remove place Gym")).toBeTruthy();
+    expect(byLabel(tree, "Clear location Gym")).toBeTruthy();
   });
 });
 
@@ -466,8 +466,8 @@ describe("current location: fast, and Where you are now follows place changes", 
     lastKnown.mockResolvedValue(fix(A));
     current.mockResolvedValue(fix(A));
     const tree = await renderScreen();
-    await act(async () => byLabel(tree, "Remove place Home").props.onPress());
-    await pressAlertButton("Remove");
+    await act(async () => byLabel(tree, "Clear location Home").props.onPress());
+    await pressAlertButton("Clear");
     expect(selected(tree, "Not at a place")).toBe(true);
     await useCurrentLocationFor(tree, "Home");
     expect(selected(tree, "Home")).toBe(true);

@@ -1,8 +1,9 @@
 import React from "react";
-import { Alert, TouchableOpacity } from "react-native";
+import { Alert, StyleSheet, Text, TouchableOpacity } from "react-native";
 import TestRenderer, { act, ReactTestRenderer } from "react-test-renderer";
 import NoteCard from "./NoteCard";
-import { DEFAULT_CATEGORY_COLORS } from "../lib/categoryColors";
+import { CATEGORIES, categoryLabel, DEFAULT_CATEGORY_COLORS, hueOf } from "../lib/categoryColors";
+import { lightColors } from "../theme";
 import { Note } from "../types/notes";
 
 // the swipe needs native gestures: render the card and its swipe action side by side
@@ -28,11 +29,11 @@ const NOTE = {
   created_at: "2026-10-04T09:00:00",
 } as unknown as Note;
 
-async function renderCard(onDelete: jest.Mock) {
+async function renderCard(onDelete: jest.Mock, note: Note = NOTE) {
   let tree!: ReactTestRenderer;
   await act(async () => {
     tree = TestRenderer.create(
-      <NoteCard note={NOTE} onPress={jest.fn()} onDelete={onDelete} places={[]} categoryColors={DEFAULT_CATEGORY_COLORS} />
+      <NoteCard note={note} onPress={jest.fn()} onDelete={onDelete} places={[]} categoryColors={DEFAULT_CATEGORY_COLORS} />
     );
   });
   return tree;
@@ -60,4 +61,12 @@ test("long-press deletes the same way, with no confirmation", async () => {
   await act(async () => card.props.onLongPress());
   expect(onDelete).toHaveBeenCalledTimes(1);
   expect(alertSpy).not.toHaveBeenCalled();
+});
+
+test.each(CATEGORIES.map((c) => [c]))("the %s label on the card is drawn in its category color", async (category) => {
+  const tree = await renderCard(jest.fn(), { ...NOTE, category } as Note);
+  const label = tree.root.findAllByType(Text).find((t) => t.props.children === categoryLabel(category))!;
+  const color = StyleSheet.flatten(label.props.style).color as string;
+  expect(color).not.toBe(lightColors.textMuted);
+  expect(Math.abs(hueOf(color) - hueOf(DEFAULT_CATEGORY_COLORS[category]))).toBeLessThanOrEqual(2);
 });

@@ -8,8 +8,8 @@ import {
   categoryLabel,
   CategoryColors,
   colorFor,
-  contrastRatio,
   normalizeCategory,
+  readableOn,
   textColorFor,
 } from "./categoryColors";
 import { GENERAL } from "./folderOrder";
@@ -34,7 +34,7 @@ export interface NoteCardInfo {
   tileColor: string; // the user's category color
   tileIconColor: string; // black or white, whichever reads better on it
   categoryLabel: string;
-  categoryTextColor: string; // the category color if readable on the card, else textMuted
+  categoryTextColor: string; // the category color, or a shade of it that's readable on the card
   placeName: string | null;
   folderName: string | null; // only when not General
   trailing: Trailing;
@@ -63,8 +63,9 @@ export function noteCardInfo(
     tileColor: color,
     tileIconColor: textColorFor(color),
     categoryLabel: categoryLabel(category),
-    // readable on this theme's card (white in light mode, dark green-grey in dark mode)
-    categoryTextColor: contrastRatio(color, palette.surface) >= 4.5 ? color : palette.textMuted,
+    // readable on this theme's card (white in light mode, dark green-grey in
+    // dark mode): a too-light or too-dark color is shaded, never swapped for grey
+    categoryTextColor: readableOn(color, palette.surface),
     placeName: locationLabel(note, places),
     folderName: note.list_name && note.list_name !== GENERAL ? note.list_name : null,
     trailing,
