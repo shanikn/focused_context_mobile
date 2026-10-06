@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
 import { Note } from "../types/notes";
@@ -24,17 +24,11 @@ export default function NoteCard({ note, onPress, onDelete, places, categoryColo
   // the palette decides whether the category name is readable on the card
   const info = noteCardInfo(note, places, categoryColors, colors);
 
-  const confirmDelete = () => {
-    Alert.alert("Delete Note", "Are you sure you want to delete this note?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: onDelete },
-    ]);
-  };
-
   const renderRightActions = () => (
     <TouchableOpacity
       style={styles.deleteAction}
-      onPress={confirmDelete}
+      // no confirmation: the list shows Undo for 5 seconds instead
+      onPress={onDelete}
       accessibilityRole="button"
       accessibilityLabel="Delete note"
     >
@@ -45,7 +39,7 @@ export default function NoteCard({ note, onPress, onDelete, places, categoryColo
 
   return (
     <Swipeable renderRightActions={renderRightActions} overshootRight={false} rightThreshold={40}>
-      <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={confirmDelete}>
+      <TouchableOpacity style={styles.card} onPress={onPress} onLongPress={onDelete}>
         <IconTile icon={info.icon} backgroundColor={info.tileColor} iconColor={info.tileIconColor} />
 
         <View style={styles.body}>

@@ -14,7 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
-import { getNotes, deleteNote } from "../api/notes";
+import { getNotes } from "../api/notes";
 import { Note } from "../types/notes";
 import NoteCard from "../components/NoteCard";
 import { NotesStackParamList } from "../../App";
@@ -22,11 +22,11 @@ import { addFolder, loadFolders, removeFolder } from "../services/foldersStore";
 import { GENERAL, folderNames } from "../lib/folderOrder";
 import { getFolderSelection, setFolderSelection } from "../lib/folderSelection";
 import FolderFilterSheet from "../components/FolderFilterSheet";
+import UndoBar from "../components/UndoBar";
+import { deleteWithUndo, hiddenNoteIds, pendingNote, subscribe, undoDelete } from "../services/pendingDelete";
 import { getNotesView, NotesView, notesViewSections, setNotesView } from "../lib/notesView";
 import { currentPlaceLabel } from "../lib/noteCardInfo";
 import { getReminderLocation } from "../lib/reminderPrefs";
-import { syncScheduledReminders } from "../services/scheduledReminders";
-import { syncStoreAlerts } from "../services/storeAlerts";
 import { loadPlaces } from "../services/placesStore";
 import { ServerPlace } from "../lib/userPlaces";
 import {
@@ -69,6 +69,26 @@ export default function NotesListScreen() {
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>(ALL_CATEGORIES);
   const [view, setView] = useState<NotesView>("recent");
+  // a deleted note is hidden while its Undo bar shows (services/pendingDelete.ts)
+  const [hiddenIds, setHiddenIds] = useState<string[]>(hiddenNoteIds);
+  const [undoNote, setUndoNote] = useState<Note | null>(pendingNote);
+
+  useEffect(
+    () =>
+      subscribe((outcome) => {
+        setHiddenIds(hiddenNoteIds());
+        setUndoNote(pendingNote());
+        if (outcome?.kind === "deleted") {
+          setNotes((prev) => prev.filter((n) => n._id !== outcome.id));
+        } else if (outcome?.kind === "failed") {
+          Alert.alert("Couldn't delete the note", "Check your connection and try again.");
+        }
+      }),
+    []
+  );
+
+  // hiding (not removing) keeps the note's place for Undo
+  const visibleNotes = useMemo(() => notes.filter((n) => !hiddenIds.includes(n._id)), [notes, hiddenIds]);
 
   useEffect(() => {
     getNotesView().then(setView);
@@ -99,8 +119,8 @@ export default function NotesListScreen() {
   // checked folders + category chip + search, combined (lib/noteFilter.ts)
   const filters = { folders: activeFolders, category: categoryFilter, query };
   const filteredNotes = useMemo(
-    () => filterNotes(notes, { folders: activeFolders, category: categoryFilter, query }),
-    [notes, activeFolders, categoryFilter, query]
+    () => filterNotes(visibleNotes, { folders: activeFolders, category: categoryFilter, query }),
+    [visibleNotes, activeFolders, categoryFilter, query]
   );
 
   const clearSearchAndFilter = () => {
@@ -168,16 +188,7 @@ export default function NotesListScreen() {
     fetchNotes();
   };
 
-  const handleDelete = async (noteId: string) => {
-    try {
-      await deleteNote(noteId);
-      setNotes((prev) => prev.filter((n) => n._id !== noteId));
-      syncScheduledReminders();
-      syncStoreAlerts();
-    } catch {
-      Alert.alert("Error", "Failed to delete note");
-    }
-  };
+  const handleDelete = (note: Note) => deleteWithUndo(note);
 
   // Deleting a folder never deletes notes: they move to General (on the
   // server). A folder with notes asks first, saying so.
@@ -260,7 +271,7 @@ export default function NotesListScreen() {
         </TouchableOpacity>
       </View>
 
-      {notes.length > 0 && (
+      {visibleNotes.length > 0 && (
         <View style={styles.viewToggle} accessibilityRole="tablist">
           {(
             [
@@ -285,7 +296,7 @@ export default function NotesListScreen() {
         </View>
       )}
 
-      {notes.length > 0 && (
+      {visibleNotes.length > 0 && (
         <View style={styles.searchWrap}>
           <View style={styles.search}>
             <Ionicons name="search-outline" size={18} color={colors.textMuted} />
@@ -335,7 +346,7 @@ export default function NotesListScreen() {
         </View>
       ) : (
         <>
-          {notes.length > 0 && (
+          {visibleNotes.length > 0 && (
             <View style={styles.chips}>
               <ChipRow scroll style={styles.chipsContent}>
                 <Chip
@@ -359,14 +370,14 @@ export default function NotesListScreen() {
             </View>
           )}
 
-          {notes.length === 0 && loadFailed ? (
+          {visibleNotes.length === 0 && loadFailed && !undoNote ? (
             <View style={styles.center}>
               <Ionicons name="cloud-offline-outline" size={56} color={colors.border} />
               <Text style={[type.cardTitle, styles.emptyText]}>Couldn't load your notes</Text>
               <Text style={type.caption}>Check your connection and try again</Text>
               <TextButton label="Try again" onPress={handleRetry} />
             </View>
-          ) : notes.length === 0 ? (
+          ) : visibleNotes.length === 0 ? (
             <View style={styles.center}>
               <Ionicons name="document-text-outline" size={64} color={colors.border} />
               <Text style={[type.cardTitle, styles.emptyText]}>No notes yet</Text>
@@ -393,7 +404,7 @@ export default function NotesListScreen() {
                 <NoteCard
                   note={item}
                   onPress={() => navigation.navigate("AddEditNote", { note: item })}
-                  onDelete={() => handleDelete(item._id)}
+                  onDelete={() => handleDelete(item)}
                   places={places}
                   categoryColors={categoryColors}
                 />
@@ -455,6 +466,14 @@ export default function NotesListScreen() {
           </View>
         </View>
       </Modal>
+
+      {undoNote && (
+        <UndoBar
+          message="Note deleted"
+          onUndo={undoDelete}
+          style={[styles.undoBar, { right: FAB_SIZE + FAB_MARGIN * 2 }]}
+        />
+      )}
 
       <TouchableOpacity
         style={styles.fab}
@@ -587,6 +606,8 @@ const makeStyles = ({ colors, type }: Theme) =>
   },
   // no section header above the first card in Recent
   recentListContent: { paddingTop: 12 },
+  // beside the + button, not over it
+  undoBar: { position: "absolute", left: FAB_MARGIN, bottom: FAB_MARGIN + 2 },
   fab: {
     position: "absolute",
     right: FAB_MARGIN,

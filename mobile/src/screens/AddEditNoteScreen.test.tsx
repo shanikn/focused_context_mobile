@@ -21,6 +21,7 @@ jest.mock("../api/notes", () => ({
   updateNote: jest.fn().mockResolvedValue({}),
   getNotes: jest.fn().mockResolvedValue([{ list_name: "Games" }, { list_name: "General" }]),
 }));
+jest.mock("../services/pendingDelete", () => ({ deleteWithUndo: jest.fn() }));
 jest.mock("../services/foldersStore", () => ({ loadFolders: jest.fn().mockResolvedValue(["Work", "Empty"]) }));
 jest.mock("../services/scheduledReminders", () => ({ syncScheduledReminders: jest.fn() }));
 jest.mock("../services/storeAlerts", () => ({ syncStoreAlerts: jest.fn() }));
@@ -274,4 +275,24 @@ test("the note text is limited to 5000 characters, like the server", async () =>
 test("the folder picker shows empty folders too", async () => {
   const tree = await renderScreen({ note: EXISTING });
   expect(allText(tree.root)).toContain("Empty");
+});
+
+describe("Delete", () => {
+  const { deleteWithUndo } = jest.requireMock("../services/pendingDelete");
+  const hasDelete = (tree: ReactTestRenderer) =>
+    tree.root.findAllByType(TouchableOpacity).some((t) => t.props.accessibilityLabel === "Delete note");
+
+  test("editing: Delete hides the note with Undo on the list and goes back", async () => {
+    const tree = await renderScreen({ note: EXISTING });
+    const button = tree.root.findAllByType(TouchableOpacity).find((t) => t.props.accessibilityLabel === "Delete note")!;
+    await act(async () => button.props.onPress());
+    expect(deleteWithUndo).toHaveBeenCalledWith(EXISTING);
+    expect(mockNavigation.goBack).toHaveBeenCalled();
+    expect(updateNote).not.toHaveBeenCalled();
+  });
+
+  test("a new note has no Delete button", async () => {
+    const tree = await renderScreen();
+    expect(hasDelete(tree)).toBe(false);
+  });
 });

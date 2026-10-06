@@ -54,6 +54,7 @@ import PasteLocationModal from "../components/PasteLocationModal";
 import DeleteAccountModal from "../components/DeleteAccountModal";
 import { deleteAccountAndSignOut } from "../services/accountDeletion";
 import { signOutCleanup } from "../services/signOutCleanup";
+import { finishPendingDelete } from "../services/pendingDelete";
 import LocationWaysSheet, { LocationWay } from "../components/LocationWaysSheet";
 import { initialMapView, MapView } from "../lib/mapPick";
 import { LatLon } from "../lib/geo";
@@ -391,6 +392,8 @@ export default function SettingsScreen() {
           const usedGoogle = auth.currentUser?.providerData.some(
             (p) => p.providerId === "google.com"
           );
+          // a note delete waiting for Undo needs this user's sign-in to reach the server
+          await finishPendingDelete();
           await signOut(auth);
           // the next person on this phone mustn't get this user's geofences,
           // alarms or offline notes

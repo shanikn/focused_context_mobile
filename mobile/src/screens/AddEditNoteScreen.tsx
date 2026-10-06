@@ -20,6 +20,7 @@ import { loadFolders } from "../services/foldersStore";
 import { folderNames, GENERAL } from "../lib/folderOrder";
 import { syncScheduledReminders } from "../services/scheduledReminders";
 import { syncStoreAlerts } from "../services/storeAlerts";
+import { deleteWithUndo } from "../services/pendingDelete";
 import { loadPlaces } from "../services/placesStore";
 import { ServerPlace } from "../lib/userPlaces";
 import { CATEGORIES, categoryLabel, normalizeCategory } from "../lib/categoryColors";
@@ -211,6 +212,12 @@ export default function AddEditNoteScreen() {
     }
   };
 
+  // the list hides the note with an Undo bar; the server delete waits
+  const handleDelete = () => {
+    deleteWithUndo(existingNote!);
+    navigation.goBack();
+  };
+
   const handleDateChange = (_event: DateTimePickerEvent, nextDate?: Date) => {
     if (Platform.OS !== "ios") {
       setShowDatePicker(false);
@@ -375,6 +382,10 @@ export default function AddEditNoteScreen() {
             ))}
           </ChipRow>
         </Card>
+
+        {isEditing && (
+          <TextButton label="Delete note" destructive onPress={handleDelete} style={styles.deleteButton} />
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -428,4 +439,5 @@ const makeStyles = ({ colors, type }: Theme) =>
   resetRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
   resetCaption: { flex: 1 },
   chips: { marginTop: 10 },
+  deleteButton: { alignSelf: "center" },
 });

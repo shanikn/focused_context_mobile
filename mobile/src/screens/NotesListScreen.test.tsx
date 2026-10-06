@@ -1,9 +1,10 @@
 import React from "react";
-import { Alert, Text, TextInput, TouchableOpacity } from "react-native";
+import { Alert, AppState, Text, TextInput, TouchableOpacity } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import TestRenderer, { act, ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
 import NotesListScreen from "./NotesListScreen";
 import { setFolderSelection } from "../lib/folderSelection";
+import { deleteWithUndo, finishPendingDelete } from "../services/pendingDelete";
 import { getNotes } from "../api/notes";
 import { Note } from "../types/notes";
 
@@ -67,10 +68,15 @@ jest.mock("../services/scheduledReminders", () => ({ syncScheduledReminders: jes
 jest.mock("../services/storeAlerts", () => ({ syncStoreAlerts: jest.fn() }));
 jest.mock("../services/placesStore", () => ({ loadPlaces: jest.fn().mockResolvedValue([]) }));
 jest.mock("../lib/reminderPrefs", () => ({ getReminderLocation: jest.fn().mockResolvedValue("unknown") }));
-// the card's swipe needs native gesture handling; show just the text
+// the card's swipe needs native gesture handling; show just the text, and
+// long-press stands for a confirmed delete (swipe -> Delete -> Delete)
 jest.mock("../components/NoteCard", () => {
   const { Text } = require("react-native");
-  return ({ note }: { note: { content: string } }) => <Text testID="note-card">{note.content}</Text>;
+  return ({ note, onDelete }: { note: { content: string }; onDelete: () => void }) => (
+    <Text testID="note-card" onLongPress={onDelete}>
+      {note.content}
+    </Text>
+  );
 });
 
 // the checked folders are remembered while the app runs; start each test fresh
@@ -460,5 +466,126 @@ describe("the folder filter", () => {
     expect(store.addFolder).toHaveBeenCalledWith("Art");
     await openSheet(tree);
     expect(options(tree).map((o) => o.props.accessibilityLabel)).toContain("Art");
+  });
+});
+
+describe("Undo after deleting a note", () => {
+  const { deleteNote } = jest.requireMock("../api/notes");
+  let alertSpy: jest.SpyInstance;
+  let appStateHandler: ((state: string) => void) | null;
+
+  const deleteCard = async (tree: ReactTestRenderer, content: string) => {
+    const card = tree.root.findAll(
+      (n) => n.props.testID === "note-card" && n.props.children === content && typeof n.props.onLongPress === "function"
+    )[0];
+    await act(async () => card.props.onLongPress());
+  };
+  const hasUndoBar = (tree: ReactTestRenderer) =>
+    tree.root.findAllByType(TouchableOpacity).some((t) => t.props.accessibilityLabel === "Undo");
+  const wait = async (ms: number) =>
+    act(async () => {
+      jest.advanceTimersByTime(ms);
+    });
+
+  beforeEach(async () => {
+    // React's act needs real microtasks; only the clock is fake
+    jest.useFakeTimers({ doNotFake: ["queueMicrotask", "nextTick", "setImmediate"] });
+    deleteNote.mockReset();
+    deleteNote.mockResolvedValue({ message: "ok" });
+    await finishPendingDelete();
+    deleteNote.mockClear();
+    alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    appStateHandler = null;
+    jest.spyOn(AppState, "addEventListener").mockImplementation((_type, handler) => {
+      appStateHandler = handler as (state: string) => void;
+      return { remove: jest.fn() } as never;
+    });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  test("the note disappears at once and a bar says so; the server delete waits 5 seconds", async () => {
+    const tree = await renderScreen();
+    await deleteCard(tree, "Study for the exam");
+    expect(shownNotes(tree)).not.toContain("Study for the exam");
+    expect(allText(tree)).toContain("Note deleted");
+    expect(hasUndoBar(tree)).toBe(true);
+    await wait(4999);
+    expect(deleteNote).not.toHaveBeenCalled();
+    await wait(1);
+    expect(deleteNote).toHaveBeenCalledWith("b");
+    expect(hasUndoBar(tree)).toBe(false);
+    expect(allText(tree)).not.toContain("Note deleted");
+    expect(shownNotes(tree)).not.toContain("Study for the exam");
+  });
+
+  test("the Undo button has the circular back-arrow icon", async () => {
+    const tree = await renderScreen();
+    await deleteCard(tree, "Buy milk");
+    const undo = byLabel(tree, "Undo");
+    expect(undo.findAll((n) => n.props.name === "arrow-undo-circle-outline").length).toBeGreaterThan(0);
+  });
+
+  test("Undo puts the note back where it was and nothing is deleted", async () => {
+    const tree = await renderScreen();
+    const before = shownNotes(tree);
+    await deleteCard(tree, "לקנות חלב");
+    expect(shownNotes(tree)).toHaveLength(2);
+    await act(async () => byLabel(tree, "Undo").props.onPress());
+    expect(shownNotes(tree)).toEqual(before);
+    expect(hasUndoBar(tree)).toBe(false);
+    await wait(10000);
+    expect(deleteNote).not.toHaveBeenCalled();
+    expect(shownNotes(tree)).toEqual(before);
+  });
+
+  test("deleting another note finishes the first delete; the bar is for the newest", async () => {
+    const tree = await renderScreen();
+    await deleteCard(tree, "Buy milk");
+    await deleteCard(tree, "Study for the exam");
+    expect(deleteNote).toHaveBeenCalledTimes(1);
+    expect(deleteNote).toHaveBeenCalledWith("a");
+    expect(shownNotes(tree)).toEqual(["לקנות חלב"]);
+    await act(async () => byLabel(tree, "Undo").props.onPress());
+    expect(shownNotes(tree).sort()).toEqual(["Study for the exam", "לקנות חלב"].sort());
+  });
+
+  test("going to the background finishes the delete right away", async () => {
+    const tree = await renderScreen();
+    await deleteCard(tree, "Buy milk");
+    await act(async () => appStateHandler!("background"));
+    expect(deleteNote).toHaveBeenCalledWith("a");
+    expect(hasUndoBar(tree)).toBe(false);
+    expect(shownNotes(tree)).not.toContain("Buy milk");
+  });
+
+  test("a failed server delete brings the note back and says so", async () => {
+    deleteNote.mockRejectedValueOnce(new TypeError("Network request failed"));
+    const tree = await renderScreen();
+    await deleteCard(tree, "Buy milk");
+    await wait(5000);
+    expect(shownNotes(tree)).toContain("Buy milk");
+    expect(alertSpy).toHaveBeenCalledWith("Couldn't delete the note", "Check your connection and try again.");
+  });
+
+  test("a note deleted on the edit screen is hidden here, with the bar", async () => {
+    deleteWithUndo(NOTES[0]);
+    const tree = await renderScreen();
+    expect(shownNotes(tree)).not.toContain("Buy milk");
+    expect(hasUndoBar(tree)).toBe(true);
+    await act(async () => byLabel(tree, "Undo").props.onPress());
+    expect(shownNotes(tree)).toContain("Buy milk");
+  });
+
+  test("deleting the only note shows the empty screen, and Undo brings it back", async () => {
+    (getNotes as jest.Mock).mockResolvedValueOnce([NOTES[0]]);
+    const tree = await renderScreen();
+    await deleteCard(tree, "Buy milk");
+    expect(allText(tree)).toContain("No notes yet");
+    expect(hasUndoBar(tree)).toBe(true);
+    await act(async () => byLabel(tree, "Undo").props.onPress());
+    expect(shownNotes(tree)).toEqual(["Buy milk"]);
   });
 });
