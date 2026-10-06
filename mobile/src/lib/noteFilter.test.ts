@@ -17,7 +17,7 @@ const unknownCategory = note("something odd", { category: "weird" });
 const ALL_NOTES = [buyMilk, exam, hebrew, niqqud, idea, noFolder, unknownCategory];
 
 const ids = (notes: Note[]) => notes.map((x) => x._id);
-const all = { folder: "All", category: ALL_CATEGORIES, query: "" };
+const all = { folders: [] as string[], category: ALL_CATEGORIES, query: "" };
 
 describe("normalizeForSearch", () => {
   test("lowercases, trims and collapses spaces", () => {
@@ -72,10 +72,18 @@ describe("filterNotes", () => {
     });
   });
 
-  describe("folder", () => {
+  describe("folders", () => {
+    test("none checked: every folder", () => {
+      expect(ids(filterNotes(ALL_NOTES, { ...all, folders: [] }))).toEqual(ids(ALL_NOTES));
+    });
+
+    test("several checked: notes from any of them, in the same order", () => {
+      expect(ids(filterNotes(ALL_NOTES, { ...all, folders: ["Uni", "Home"] }))).toEqual([exam._id, hebrew._id]);
+    });
+
     test("only notes in that folder; no folder counts as General", () => {
-      expect(ids(filterNotes(ALL_NOTES, { ...all, folder: "Uni" }))).toEqual([exam._id]);
-      expect(ids(filterNotes(ALL_NOTES, { ...all, folder: "General" }))).toEqual([
+      expect(ids(filterNotes(ALL_NOTES, { ...all, folders: ["Uni"] }))).toEqual([exam._id]);
+      expect(ids(filterNotes(ALL_NOTES, { ...all, folders: ["General"] }))).toEqual([
         buyMilk._id,
         niqqud._id,
         idea._id,
@@ -86,20 +94,20 @@ describe("filterNotes", () => {
   });
 
   test("folder, category and search combine", () => {
-    expect(ids(filterNotes(ALL_NOTES, { folder: "Home", category: "errand", query: "חלב" }))).toEqual([
+    expect(ids(filterNotes(ALL_NOTES, { folders: ["Home"], category: "errand", query: "חלב" }))).toEqual([
       hebrew._id,
     ]);
-    expect(ids(filterNotes(ALL_NOTES, { folder: "General", category: "errand", query: "milk" }))).toEqual([
+    expect(ids(filterNotes(ALL_NOTES, { folders: ["General", "Uni"], category: "errand", query: "milk" }))).toEqual([
       buyMilk._id,
     ]);
-    expect(filterNotes(ALL_NOTES, { folder: "Uni", category: "errand", query: "" })).toEqual([]);
+    expect(filterNotes(ALL_NOTES, { folders: ["Uni"], category: "errand", query: "" })).toEqual([]);
   });
 });
 
-test("hasActiveFilters: a search or a category (the folder is a separate tab)", () => {
+test("hasActiveFilters: a search, a category or checked folders", () => {
   expect(hasActiveFilters({ ...all })).toBe(false);
   expect(hasActiveFilters({ ...all, query: "  " })).toBe(false);
   expect(hasActiveFilters({ ...all, query: "milk" })).toBe(true);
   expect(hasActiveFilters({ ...all, category: "idea" })).toBe(true);
-  expect(hasActiveFilters({ ...all, folder: "Uni" })).toBe(false);
+  expect(hasActiveFilters({ ...all, folders: ["Uni"] })).toBe(true);
 });

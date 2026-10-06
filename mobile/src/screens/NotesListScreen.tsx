@@ -19,8 +19,9 @@ import { Note } from "../types/notes";
 import NoteCard from "../components/NoteCard";
 import { NotesStackParamList } from "../../App";
 import { addFolder, loadFolders, removeFolder } from "../services/foldersStore";
-import { ApiError } from "../api/client";
-import { ALL, GENERAL, folderTabs } from "../lib/folderOrder";
+import { GENERAL, folderNames } from "../lib/folderOrder";
+import { getFolderSelection, setFolderSelection } from "../lib/folderSelection";
+import FolderFilterSheet from "../components/FolderFilterSheet";
 import { getNotesView, NotesView, notesViewSections, setNotesView } from "../lib/notesView";
 import { currentPlaceLabel } from "../lib/noteCardInfo";
 import { getReminderLocation } from "../lib/reminderPrefs";
@@ -59,7 +60,9 @@ export default function NotesListScreen() {
   const [loadFailed, setLoadFailed] = useState(false);
   // focus refetches can overlap: only the newest one may update the screen
   const latestFetch = useRef(0);
-  const [activeTab, setActiveTab] = useState(ALL);
+  // the folders checked in the filter sheet; remembered while the app is open
+  const [checkedFolders, setCheckedFolders] = useState<string[]>(getFolderSelection);
+  const [showFolderFilter, setShowFolderFilter] = useState(false);
   const [customLists, setCustomLists] = useState<string[]>([]);
   const [showCreateListModal, setShowCreateListModal] = useState(false);
   const [newListName, setNewListName] = useState("");
@@ -76,19 +79,34 @@ export default function NotesListScreen() {
     setNotesView(next);
   };
 
-  // All, then General, then the other folders alphabetically (no re-sorting here)
-  const listNames = useMemo(() => folderTabs(notes, customLists), [notes, customLists]);
+  // General, then the other folders alphabetically, empty ones included
+  const listNames = useMemo(() => folderNames(notes, customLists), [notes, customLists]);
 
-  // folder tab + category chip + search, combined (lib/noteFilter.ts)
-  const filters = { folder: activeTab, category: categoryFilter, query };
+  // a checked folder that no longer exists (deleted elsewhere) doesn't count
+  const activeFolders = useMemo(
+    () => checkedFolders.filter((name) => listNames.includes(name)),
+    [checkedFolders, listNames]
+  );
+
+  const chooseFolders = (names: string[]) => {
+    setCheckedFolders(names);
+    setFolderSelection(names);
+  };
+
+  const toggleFolder = (name: string) =>
+    chooseFolders(checkedFolders.includes(name) ? checkedFolders.filter((n) => n !== name) : [...checkedFolders, name]);
+
+  // checked folders + category chip + search, combined (lib/noteFilter.ts)
+  const filters = { folders: activeFolders, category: categoryFilter, query };
   const filteredNotes = useMemo(
-    () => filterNotes(notes, { folder: activeTab, category: categoryFilter, query }),
-    [notes, activeTab, categoryFilter, query]
+    () => filterNotes(notes, { folders: activeFolders, category: categoryFilter, query }),
+    [notes, activeFolders, categoryFilter, query]
   );
 
   const clearSearchAndFilter = () => {
     setQuery("");
     setCategoryFilter(ALL_CATEGORIES);
+    chooseFolders([]);
   };
 
   // Recent: one list, newest first; Upcoming: the date sections
@@ -164,7 +182,7 @@ export default function NotesListScreen() {
   // Deleting a folder never deletes notes: they move to General (on the
   // server). A folder with notes asks first, saying so.
   const handleDeleteFolder = (name: string) => {
-    if (name === ALL || name === GENERAL) return;
+    if (name === GENERAL) return;
     const count = notes.filter((n) => n.list_name === name).length;
     const message =
       count === 0
@@ -182,7 +200,7 @@ export default function NotesListScreen() {
             const { folders } = await removeFolder(name);
             setCustomLists(folders);
             setNotes((prev) => prev.map((n) => (n.list_name === name ? { ...n, list_name: GENERAL } : n)));
-            setActiveTab(ALL);
+            chooseFolders(getFolderSelection().filter((n) => n !== name));
           } catch {
             Alert.alert("Couldn't delete the folder", "Check your connection and try again.");
           }
@@ -206,7 +224,6 @@ export default function NotesListScreen() {
     try {
       const nextLists = await addFolder(trimmed);
       setCustomLists(nextLists);
-      setActiveTab(trimmed);
       setNewListName("");
       setShowCreateListModal(false);
     } catch {
@@ -293,6 +310,22 @@ export default function NotesListScreen() {
               </TouchableOpacity>
             )}
           </View>
+          <TouchableOpacity
+            style={[styles.filterButton, activeFolders.length > 0 && styles.filterButtonActive]}
+            onPress={() => setShowFolderFilter(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Filter by folder"
+            accessibilityValue={activeFolders.length > 0 ? { text: `${activeFolders.length} checked` } : undefined}
+          >
+            <Ionicons name="filter" size={22} color={activeFolders.length > 0 ? colors.primaryDark : colors.text} />
+            {activeFolders.length > 0 && (
+              <View style={styles.badge}>
+                <Text testID="folder-filter-count" style={styles.badgeText}>
+                  {activeFolders.length}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
       )}
 
@@ -305,28 +338,6 @@ export default function NotesListScreen() {
           {notes.length > 0 && (
             <View style={styles.chips}>
               <ChipRow scroll style={styles.chipsContent}>
-                {listNames.map((name) => (
-                  <Chip
-                    key={name}
-                    label={name}
-                    testID="folder-tab"
-                    selected={activeTab === name}
-                    onPress={() => setActiveTab(name)}
-                    onLongPress={() => handleDeleteFolder(name)}
-                  />
-                ))}
-              </ChipRow>
-              {activeTab !== ALL && activeTab !== GENERAL && (
-                <View style={styles.folderActions}>
-                  <TextButton
-                    label="Delete folder"
-                    accessibilityLabel={`Delete folder ${activeTab}`}
-                    destructive
-                    onPress={() => handleDeleteFolder(activeTab)}
-                  />
-                </View>
-              )}
-              <ChipRow scroll style={[styles.chipsContent, styles.categoryChips]}>
                 <Chip
                   label="All"
                   icon="pricetags-outline"
@@ -365,10 +376,9 @@ export default function NotesListScreen() {
             <View style={styles.center}>
               <Ionicons name="search-outline" size={56} color={colors.border} />
               <Text style={[type.cardTitle, styles.emptyText]}>No matching notes</Text>
-              {hasActiveFilters(filters) ? (
+              {activeFolders.length > 0 && <Text style={type.caption}>No notes in the checked folders</Text>}
+              {hasActiveFilters(filters) && (
                 <TextButton label="Clear search and filter" onPress={clearSearchAndFilter} />
-              ) : (
-                <Text style={type.caption}>This folder is empty</Text>
               )}
             </View>
           ) : (
@@ -396,6 +406,16 @@ export default function NotesListScreen() {
           )}
         </>
       )}
+
+      <FolderFilterSheet
+        visible={showFolderFilter}
+        folders={listNames}
+        checked={activeFolders}
+        onToggle={toggleFolder}
+        onClear={() => chooseFolders([])}
+        onDelete={handleDeleteFolder}
+        onClose={() => setShowFolderFilter(false)}
+      />
 
       <Modal
         visible={showCreateListModal}
@@ -440,7 +460,8 @@ export default function NotesListScreen() {
         style={styles.fab}
         onPress={() =>
           navigation.navigate("AddEditNote", {
-            initialListName: activeTab !== ALL ? activeTab : undefined,
+            // exactly one folder checked: the new note starts there
+            initialListName: activeFolders.length === 1 ? activeFolders[0] : undefined,
           })
         }
         accessibilityRole="button"
@@ -502,10 +523,33 @@ const makeStyles = ({ colors, type }: Theme) =>
   viewOptionText: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.primaryDark },
   viewOptionTextSelected: { color: colors.onPrimary },
   chips: { flexGrow: 0, paddingBottom: 4 },
-  categoryChips: { paddingTop: 8 },
-  folderActions: { paddingHorizontal: spacing.screen, alignItems: "flex-start" },
-  searchWrap: { paddingHorizontal: spacing.screen, paddingBottom: 10 },
+  searchWrap: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: spacing.screen, paddingBottom: 10 },
+  filterButton: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.chip,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterButtonActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  badge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.onPrimary },
   search: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,

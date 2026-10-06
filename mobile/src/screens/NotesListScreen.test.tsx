@@ -3,6 +3,7 @@ import { Alert, Text, TextInput, TouchableOpacity } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import TestRenderer, { act, ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
 import NotesListScreen from "./NotesListScreen";
+import { setFolderSelection } from "../lib/folderSelection";
 import { getNotes } from "../api/notes";
 import { Note } from "../types/notes";
 
@@ -72,6 +73,9 @@ jest.mock("../components/NoteCard", () => {
   return ({ note }: { note: { content: string } }) => <Text testID="note-card">{note.content}</Text>;
 });
 
+// the checked folders are remembered while the app runs; start each test fresh
+beforeEach(() => setFolderSelection([]));
+
 function shownNotes(tree: ReactTestRenderer): string[] {
   // host (native) elements only; findAllByProps also returns the composite Text wrapper
   return tree.root
@@ -129,11 +133,21 @@ test("the clear (x) button appears with text and empties the search", async () =
   expect(shownNotes(tree)).toHaveLength(3);
 });
 
+// the folder filter: a sheet with a checkbox per folder
+async function checkFolders(tree: ReactTestRenderer, ...names: string[]) {
+  await act(async () => byLabel(tree, "Filter by folder").props.onPress());
+  for (const name of names) {
+    const option = tree.root.findAll((n) => n.props.testID === "folder-option" && n.props.accessibilityLabel === name)[0];
+    await act(async () => option.props.onPress());
+  }
+  await act(async () => byLabel(tree, "Done").props.onPress());
+}
+
 test("category chips filter, and combine with the folder and the search", async () => {
   const tree = await renderScreen();
   await act(async () => byLabel(tree, "Errand notes").props.onPress());
   expect(shownNotes(tree).sort()).toEqual(["Buy milk", "לקנות חלב"].sort());
-  await act(async () => byLabel(tree, "Uni").props.onPress());
+  await checkFolders(tree, "Uni");
   expect(shownNotes(tree)).toEqual(["לקנות חלב"]);
   await type(tree, "milk");
   expect(shownNotes(tree)).toEqual([]);
@@ -188,15 +202,17 @@ describe("Recent / Upcoming toggle", () => {
     expect(headers(again)).toEqual(["Today", "Smart alerts"]);
   });
 
-  test("search, folder tabs and the category filter work in both views", async () => {
+  test("search, the folder filter and the category filter work in both views", async () => {
     for (const view of ["Recent", "Upcoming"]) {
       const tree = await renderScreen();
       await act(async () => byLabel(tree, view).props.onPress());
       await act(async () => byLabel(tree, "Errand notes").props.onPress());
       expect(shownNotes(tree)).toEqual(["Buy milk", "לקנות חלב"]);
-      await act(async () => byLabel(tree, "Uni").props.onPress());
+      await checkFolders(tree, "Uni");
       expect(shownNotes(tree)).toEqual(["לקנות חלב"]);
-      await act(async () => byLabel(tree, "All").props.onPress());
+      await act(async () => byLabel(tree, "Filter by folder").props.onPress());
+      await act(async () => byLabel(tree, "Clear").props.onPress());
+      await act(async () => byLabel(tree, "Done").props.onPress());
       await type(tree, "milk");
       expect(shownNotes(tree)).toEqual(["Buy milk"]);
       await act(async () => tree.unmount());
@@ -263,7 +279,7 @@ describe("loading errors", () => {
   });
 });
 
-describe("folders stay until deleted", () => {
+describe("the folder filter", () => {
   const store = jest.requireMock("../services/foldersStore");
   const { deleteNote } = jest.requireMock("../api/notes");
   let alertSpy: jest.SpyInstance;
@@ -274,10 +290,20 @@ describe("folders stay until deleted", () => {
       await button.onPress?.();
     });
   };
-  const tabs = (tree: ReactTestRenderer) =>
-    tree.root
-      .findAll((n) => n.props.testID === "folder-tab" && typeof n.type === "string")
-      .map((n) => n.props.accessibilityLabel);
+  const options = (tree: ReactTestRenderer) =>
+    tree.root.findAll((n) => n.props.testID === "folder-option" && typeof n.type === "string");
+  const option = (tree: ReactTestRenderer, name: string) => options(tree).find((o) => o.props.accessibilityLabel === name)!;
+  const openSheet = async (tree: ReactTestRenderer) => act(async () => byLabel(tree, "Filter by folder").props.onPress());
+  const toggle = async (tree: ReactTestRenderer, name: string) =>
+    act(async () =>
+      tree.root
+        .findAllByType(TouchableOpacity)
+        .find((t) => t.props.testID === "folder-option" && t.props.accessibilityLabel === name)!
+        .props.onPress()
+    );
+  const done = async (tree: ReactTestRenderer) => act(async () => byLabel(tree, "Done").props.onPress());
+  const badge = (tree: ReactTestRenderer) =>
+    tree.root.findAll((n) => n.props.testID === "folder-filter-count" && typeof n.type === "string")[0];
 
   beforeEach(() => {
     alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
@@ -291,67 +317,137 @@ describe("folders stay until deleted", () => {
     store.loadFolders.mockResolvedValue([]);
   });
 
-  test("an empty folder still has its tab", async () => {
+  test("no row of folder tabs: one filter button, no count while nothing is checked", async () => {
     const tree = await renderScreen();
-    expect(tabs(tree)).toEqual(["All", "General", "Games", "Trips", "Uni"]);
+    expect(tree.root.findAll((n) => n.props.testID === "folder-tab")).toHaveLength(0);
+    expect(byLabel(tree, "Filter by folder")).toBeTruthy();
+    expect(badge(tree)).toBeUndefined();
   });
 
-  test("a Delete folder button on your folders, not on All or General", async () => {
+  test("the sheet lists every folder, empty ones too, each with a checkbox", async () => {
     const tree = await renderScreen();
-    expect(tree.root.findAllByType(TouchableOpacity).some((t) => t.props.accessibilityLabel?.startsWith("Delete folder"))).toBe(
-      false
-    );
-    await act(async () => byLabel(tree, "General").props.onPress());
-    expect(tree.root.findAllByType(TouchableOpacity).some((t) => t.props.accessibilityLabel?.startsWith("Delete folder"))).toBe(
-      false
-    );
-    await act(async () => byLabel(tree, "Games").props.onPress());
-    expect(byLabel(tree, "Delete folder Games")).toBeTruthy();
+    await openSheet(tree);
+    expect(options(tree).map((o) => o.props.accessibilityLabel)).toEqual(["General", "Games", "Trips", "Uni"]);
+    expect(options(tree).every((o) => o.props.accessibilityRole === "checkbox")).toBe(true);
+    expect(options(tree).every((o) => o.props.accessibilityState.checked === false)).toBe(true);
   });
 
-  test("deleting an empty folder asks, then removes it", async () => {
-    store.removeFolder.mockResolvedValue({ folders: ["Trips"], moved: 0 });
+  test("check one or several: notes from those folders; the button shows how many", async () => {
     const tree = await renderScreen();
-    await act(async () => byLabel(tree, "Games").props.onPress());
-    await act(async () => byLabel(tree, "Delete folder Games").props.onPress());
-    expect(lastAlert()[1]).toBe('Delete the folder "Games"?');
-    await press("Delete folder");
-    expect(store.removeFolder).toHaveBeenCalledWith("Games");
-    expect(tabs(tree)).toEqual(["All", "General", "Trips", "Uni"]);
+    await openSheet(tree);
+    await toggle(tree, "Uni");
+    expect(option(tree, "Uni").props.accessibilityState.checked).toBe(true);
+    await done(tree);
+    expect(shownNotes(tree).sort()).toEqual(["Study for the exam", "לקנות חלב"].sort());
+    expect(badge(tree).props.children).toBe(1);
+    expect(byLabel(tree, "Filter by folder").props.accessibilityValue).toEqual({ text: "1 checked" });
+
+    await openSheet(tree);
+    await toggle(tree, "General");
+    await done(tree);
+    expect(shownNotes(tree)).toHaveLength(3);
+    expect(badge(tree).props.children).toBe(2);
   });
 
-  test("a folder with notes: asks, then moves its notes to General (never deletes them)", async () => {
+  test("unchecking every folder, or Clear, shows all notes again", async () => {
+    const tree = await renderScreen();
+    await openSheet(tree);
+    await toggle(tree, "Uni");
+    await toggle(tree, "Uni");
+    await done(tree);
+    expect(shownNotes(tree)).toHaveLength(3);
+    await openSheet(tree);
+    await toggle(tree, "Games");
+    await toggle(tree, "Trips");
+    await act(async () => byLabel(tree, "Clear").props.onPress());
+    expect(options(tree).every((o) => o.props.accessibilityState.checked === false)).toBe(true);
+    await done(tree);
+    expect(shownNotes(tree)).toHaveLength(3);
+    expect(badge(tree)).toBeUndefined();
+  });
+
+  test("an empty folder checked: a message and a way to clear", async () => {
+    const tree = await renderScreen();
+    await openSheet(tree);
+    await toggle(tree, "Games");
+    await done(tree);
+    expect(shownNotes(tree)).toEqual([]);
+    expect(allText(tree)).toContain("No notes in the checked folders");
+    await act(async () => byLabel(tree, "Clear search and filter").props.onPress());
+    expect(shownNotes(tree)).toHaveLength(3);
+  });
+
+  test("the checked folders are remembered when you come back to the screen", async () => {
+    const first = await renderScreen();
+    await openSheet(first);
+    await toggle(first, "Uni");
+    await done(first);
+    await act(async () => first.unmount());
+    const again = await renderScreen();
+    expect(shownNotes(again).sort()).toEqual(["Study for the exam", "לקנות חלב"].sort());
+    expect(badge(again).props.children).toBe(1);
+  });
+
+  test("a new note starts in the checked folder when exactly one is checked", async () => {
+    const navigate = jest.fn();
+    const nav = jest.requireMock("@react-navigation/native");
+    const original = nav.useNavigation;
+    nav.useNavigation = () => ({ navigate, getParent: () => ({ navigate: jest.fn() }) });
+    try {
+      const tree = await renderScreen();
+      await openSheet(tree);
+      await toggle(tree, "Uni");
+      await done(tree);
+      await act(async () => byLabel(tree, "Add a note").props.onPress());
+      expect(navigate).toHaveBeenLastCalledWith("AddEditNote", { initialListName: "Uni" });
+      await openSheet(tree);
+      await toggle(tree, "General");
+      await done(tree);
+      await act(async () => byLabel(tree, "Add a note").props.onPress());
+      expect(navigate).toHaveBeenLastCalledWith("AddEditNote", { initialListName: undefined });
+    } finally {
+      nav.useNavigation = original;
+    }
+  });
+
+  test("delete a folder from the sheet: asks, moves its notes to General, never deletes them", async () => {
     store.removeFolder.mockResolvedValue({ folders: ["Games", "Trips"], moved: 2 });
     const tree = await renderScreen();
-    await act(async () => byLabel(tree, "Uni").props.onPress());
+    await openSheet(tree);
+    await toggle(tree, "Uni");
+    expect(tree.root.findAllByType(TouchableOpacity).some((t) => t.props.accessibilityLabel === "Delete folder General")).toBe(
+      false
+    );
     await act(async () => byLabel(tree, "Delete folder Uni").props.onPress());
     expect(lastAlert()[1]).toBe('"Uni" has 2 notes. Delete the folder and move them to General?');
-    await press("Cancel");
-    expect(store.removeFolder).not.toHaveBeenCalled();
-    await act(async () => byLabel(tree, "Delete folder Uni").props.onPress());
     await press("Delete folder");
     expect(store.removeFolder).toHaveBeenCalledWith("Uni");
     expect(deleteNote).not.toHaveBeenCalled();
-    expect(tabs(tree)).not.toContain("Uni");
-    await act(async () => byLabel(tree, "General").props.onPress());
-    expect(shownNotes(tree).sort()).toEqual(["Buy milk", "Study for the exam", "לקנות חלב"].sort());
+    expect(options(tree).map((o) => o.props.accessibilityLabel)).toEqual(["General", "Games", "Trips"]);
+    await done(tree);
+    // Uni was checked; it's gone, so the filter is clear and every note shows
+    expect(badge(tree)).toBeUndefined();
+    expect(shownNotes(tree)).toHaveLength(3);
   });
 
-  test("a long press on a folder tab asks the same way", async () => {
+  test("deleting an empty folder asks a simpler question", async () => {
+    store.removeFolder.mockResolvedValue({ folders: ["Trips"], moved: 0 });
     const tree = await renderScreen();
-    const games = tree.root.findAll((n) => n.props.testID === "folder-tab" && n.props.accessibilityLabel === "Games")[0];
-    await act(async () => games.props.onLongPress());
+    await openSheet(tree);
+    await act(async () => byLabel(tree, "Delete folder Games").props.onPress());
     expect(lastAlert()[1]).toBe('Delete the folder "Games"?');
+    await press("Delete folder");
+    expect(options(tree).map((o) => o.props.accessibilityLabel)).toEqual(["General", "Trips", "Uni"]);
   });
 
   test("a failed delete says so and keeps the folder", async () => {
     store.removeFolder.mockRejectedValue(new TypeError("Network request failed"));
     const tree = await renderScreen();
-    await act(async () => byLabel(tree, "Games").props.onPress());
+    await openSheet(tree);
     await act(async () => byLabel(tree, "Delete folder Games").props.onPress());
     await press("Delete folder");
     expect(lastAlert()[0]).toBe("Couldn't delete the folder");
-    expect(tabs(tree)).toContain("Games");
+    expect(options(tree).map((o) => o.props.accessibilityLabel)).toContain("Games");
   });
 
   test("creating a folder saves it on the server", async () => {
@@ -362,6 +458,7 @@ describe("folders stay until deleted", () => {
     await act(async () => input.props.onChangeText("Art"));
     await act(async () => byLabel(tree, "Create").props.onPress());
     expect(store.addFolder).toHaveBeenCalledWith("Art");
-    expect(tabs(tree)).toContain("Art");
+    await openSheet(tree);
+    expect(options(tree).map((o) => o.props.accessibilityLabel)).toContain("Art");
   });
 });

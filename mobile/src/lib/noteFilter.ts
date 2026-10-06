@@ -1,14 +1,14 @@
 import { Note } from "../types/notes";
 import { normalizeCategory } from "./categoryColors";
-import { ALL, GENERAL } from "./folderOrder";
+import { GENERAL } from "./folderOrder";
 
-// Filters for the notes list: folder tab, category chip and search text.
+// Filters for the notes list: checked folders, category chip and search text.
 // They combine (a note must match all three) and keep the notes' order.
 
 export const ALL_CATEGORIES = "All";
 
 export interface NoteFilters {
-  folder: string; // "All" or a folder name
+  folders: string[]; // the checked folders; none checked = every folder
   category: string; // "All" or a category
   query: string;
 }
@@ -31,7 +31,7 @@ export function normalizeForSearch(text: string): string {
 export function filterNotes(notes: Note[], filters: NoteFilters): Note[] {
   const words = normalizeForSearch(filters.query).split(" ").filter(Boolean);
   return notes.filter((note) => {
-    if (filters.folder !== ALL && (note.list_name || GENERAL) !== filters.folder) {
+    if (filters.folders.length > 0 && !filters.folders.includes(note.list_name || GENERAL)) {
       return false;
     }
     if (filters.category !== ALL_CATEGORIES && normalizeCategory(note.category) !== filters.category) {
@@ -45,7 +45,7 @@ export function filterNotes(notes: Note[], filters: NoteFilters): Note[] {
   });
 }
 
-// A search or a category is narrowing the list (the folder is its own tab).
+// A search, a category or checked folders are narrowing the list.
 export function hasActiveFilters(filters: NoteFilters): boolean {
-  return filters.query.trim() !== "" || filters.category !== ALL_CATEGORIES;
+  return filters.query.trim() !== "" || filters.category !== ALL_CATEGORIES || filters.folders.length > 0;
 }
