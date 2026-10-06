@@ -145,7 +145,7 @@ export default function AddEditNoteScreen() {
     useCallback(() => {
       Promise.all([getNotes(), loadFolders().catch(() => [])])
         .then(([notes, customLists]) => {
-          // General first, then the other folders alphabetically
+          // General first, then the user's folder order (lib/folderOrder.ts)
           setExistingLists(folderNames(notes, customLists));
         })
         .catch(() => {});

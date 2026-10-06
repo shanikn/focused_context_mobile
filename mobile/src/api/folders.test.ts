@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import { createFolder, deleteFolder, listFolders } from "./folders";
+import { createFolder, deleteFolder, listFolders, saveFolderOrder } from "./folders";
 
 jest.mock("./client", () => ({ apiRequest: jest.fn() }));
 const request = apiRequest as jest.Mock;
@@ -22,4 +22,13 @@ test("deletes a folder, its name encoded in the URL (spaces, Hebrew)", async () 
   request.mockResolvedValue({ deleted: true, moved: 2 });
   expect(await deleteFolder("משחקים לילדים")).toEqual({ deleted: true, moved: 2 });
   expect(request).toHaveBeenCalledWith(`/folders/${encodeURIComponent("משחקים לילדים")}`, { method: "DELETE" });
+});
+
+test("saves the folder order with a JSON body and returns the server's order", async () => {
+  request.mockResolvedValue([{ name: "Trips" }, { name: "Games" }]);
+  expect(await saveFolderOrder(["Trips", "Games"])).toEqual(["Trips", "Games"]);
+  expect(request).toHaveBeenCalledWith("/folders/order", {
+    method: "PUT",
+    body: JSON.stringify({ names: ["Trips", "Games"] }),
+  });
 });

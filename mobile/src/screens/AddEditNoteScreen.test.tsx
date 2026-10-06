@@ -198,11 +198,13 @@ test("place: a chip sets the place id explicitly", async () => {
   );
 });
 
-test("folder: chips start with General, then the rest alphabetically; picking one is saved", async () => {
+test("folder: chips start with General, then the user's folder order; picking one is saved", async () => {
   const tree = await renderScreen({ note: EXISTING });
   const text = allText(tree.root);
-  expect(text.indexOf("General")).toBeLessThan(text.indexOf("Games"));
-  expect(text.indexOf("Games")).toBeLessThan(text.indexOf("Work"));
+  // the saved order is Work, Empty; Games is only used by a note (not saved yet), so last
+  expect(text.indexOf("General")).toBeLessThan(text.indexOf("Work"));
+  expect(text.indexOf("Work")).toBeLessThan(text.indexOf("Empty"));
+  expect(text.indexOf("Empty")).toBeLessThan(text.indexOf("Games"));
   await press(tree, "Games");
   await press(tree, "Save");
   expect(updateNote).toHaveBeenCalledWith("note-1", expect.objectContaining({ list_name: "Games" }));

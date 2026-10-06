@@ -63,6 +63,7 @@ jest.mock("../services/foldersStore", () => ({
   loadFolders: jest.fn().mockResolvedValue([]),
   addFolder: jest.fn(),
   removeFolder: jest.fn(),
+  reorderFolders: jest.fn(),
 }));
 jest.mock("../services/scheduledReminders", () => ({ syncScheduledReminders: jest.fn() }));
 jest.mock("../services/storeAlerts", () => ({ syncStoreAlerts: jest.fn() }));
@@ -588,5 +589,92 @@ describe("Undo after deleting a note", () => {
     expect(hasUndoBar(tree)).toBe(true);
     await act(async () => byLabel(tree, "Undo").props.onPress());
     expect(shownNotes(tree)).toEqual(["Buy milk"]);
+  });
+});
+
+describe("reordering folders", () => {
+  const store = jest.requireMock("../services/foldersStore");
+  let alertSpy: jest.SpyInstance;
+  const options = (tree: ReactTestRenderer) =>
+    tree.root
+      .findAll((n) => n.props.testID === "folder-option" && typeof n.type === "string")
+      .map((o) => o.props.accessibilityLabel);
+  const handle = (tree: ReactTestRenderer, name: string) =>
+    tree.root.findAll((n) => n.props.accessibilityLabel === `Reorder ${name}` && typeof n.type !== "string")[0];
+  const hasHandle = (tree: ReactTestRenderer, name: string) =>
+    tree.root.findAll((n) => n.props.accessibilityLabel === `Reorder ${name}`).length > 0;
+  const move = async (tree: ReactTestRenderer, name: string, action: "moveUp" | "moveDown") =>
+    act(async () => handle(tree, name).props.onAccessibilityAction({ nativeEvent: { actionName: action } }));
+  const openSheet = async (tree: ReactTestRenderer) => act(async () => byLabel(tree, "Filter by folder").props.onPress());
+
+  beforeEach(() => {
+    alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    store.loadFolders.mockResolvedValue(["Uni", "Games", "Trips"]);
+    store.reorderFolders.mockReset();
+    store.reorderFolders.mockImplementation(async (names: string[]) => names);
+  });
+  afterEach(() => {
+    alertSpy.mockRestore();
+    store.loadFolders.mockResolvedValue([]);
+  });
+
+  test("the sheet lists folders in the saved order, General fixed first", async () => {
+    const tree = await renderScreen();
+    await openSheet(tree);
+    expect(options(tree)).toEqual(["General", "Uni", "Games", "Trips"]);
+  });
+
+  test("every folder but General has a drag handle, with move up / down for screen readers", async () => {
+    const tree = await renderScreen();
+    await openSheet(tree);
+    expect(hasHandle(tree, "General")).toBe(false);
+    for (const name of ["Uni", "Games", "Trips"]) {
+      expect(hasHandle(tree, name)).toBe(true);
+    }
+    const games = tree.root.findAll(
+      (n) => n.props.accessibilityLabel === "Reorder Games" && Array.isArray(n.props.accessibilityActions)
+    )[0];
+    expect(games.props.accessibilityActions.map((a: { name: string }) => a.name)).toEqual([
+      "moveUp",
+      "moveDown",
+    ]);
+  });
+
+  test("moving a folder saves the new order and shows it right away", async () => {
+    const tree = await renderScreen();
+    await openSheet(tree);
+    await move(tree, "Trips", "moveUp");
+    expect(store.reorderFolders).toHaveBeenLastCalledWith(["Uni", "Trips", "Games"]);
+    expect(options(tree)).toEqual(["General", "Uni", "Trips", "Games"]);
+    await move(tree, "Uni", "moveDown");
+    expect(store.reorderFolders).toHaveBeenLastCalledWith(["Trips", "Uni", "Games"]);
+    expect(options(tree)).toEqual(["General", "Trips", "Uni", "Games"]);
+  });
+
+  test("the first folder can't go above General, the last can't go further down", async () => {
+    const tree = await renderScreen();
+    await openSheet(tree);
+    await move(tree, "Uni", "moveUp");
+    await move(tree, "Trips", "moveDown");
+    expect(store.reorderFolders).not.toHaveBeenCalled();
+    expect(options(tree)).toEqual(["General", "Uni", "Games", "Trips"]);
+  });
+
+  test("a drag that ends lower in the list saves that order", async () => {
+    const tree = await renderScreen();
+    await openSheet(tree);
+    const sheet = tree.root.findAll((n) => typeof n.props.onReorder === "function")[0];
+    await act(async () => sheet.props.onReorder(["Games", "Trips", "Uni"]));
+    expect(store.reorderFolders).toHaveBeenLastCalledWith(["Games", "Trips", "Uni"]);
+    expect(options(tree)).toEqual(["General", "Games", "Trips", "Uni"]);
+  });
+
+  test("a failed save puts the old order back and says so", async () => {
+    store.reorderFolders.mockRejectedValueOnce(new TypeError("Network request failed"));
+    const tree = await renderScreen();
+    await openSheet(tree);
+    await move(tree, "Trips", "moveUp");
+    expect(options(tree)).toEqual(["General", "Uni", "Games", "Trips"]);
+    expect(alertSpy).toHaveBeenCalledWith("Couldn't save the folder order", "Check your connection and try again.");
   });
 });

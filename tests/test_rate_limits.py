@@ -175,3 +175,12 @@ def test_folder_changes_20_a_minute(limits_on, monkeypatch):
     res = client.post("/folders/", json={"name": "Games"}, headers=AS_A)
     assert res.status_code == 429
     assert res.json()["detail"]["message"] == "Too many folder changes, try again in a minute."
+
+
+def test_saving_the_folder_order_30_a_minute(limits_on, monkeypatch):
+    monkeypatch.setattr(main, "set_folder_order", lambda user_id, names: names)
+    statuses = _hit(30, lambda: client.put("/folders/order", json={"names": ["Games"]}, headers=AS_A))
+    assert set(statuses) == {200}
+    res = client.put("/folders/order", json={"names": ["Games"]}, headers=AS_A)
+    assert res.status_code == 429
+    assert res.json()["detail"]["message"] == "Too many folder order changes, try again in a minute."

@@ -3,6 +3,10 @@ deletes them, even when empty, after reinstalling or on another device.
 
 Notes refer to a folder by name (note.list_name). "General" is the built-in
 folder every note without one belongs to; it's never stored.
+
+Each folder has an "order" (0, 1, 2...): the user arranges them, new ones go
+at the end. Folders stored before orders existed get one, A to Z, the first
+time the user's folders are listed or changed.
 """
 from uuid import uuid4
 
@@ -39,8 +43,27 @@ def _exists(user_id: str, name: str) -> bool:
     return folders_collection.count_documents({"user_id": user_id, "key": name.lower()}) > 0
 
 
+def _sorted_docs(user_id: str) -> list:
+    """The user's folder documents in their order; ones without an order
+    (stored before orders existed) come after, A to Z."""
+    docs = list(folders_collection.find({"user_id": user_id}, {"name": 1, "order": 1}))
+    return sorted(docs, key=lambda d: ("order" not in d, d.get("order", 0), d["name"].lower()))
+
+
+def _number_folders(user_id: str, docs: list):
+    """Store 0, 1, 2... as the order of these documents, where it changed."""
+    for i, doc in enumerate(docs):
+        if doc.get("order") != i:
+            folders_collection.update_one({"_id": doc["_id"]}, {"$set": {"order": i}})
+            doc["order"] = i
+
+
 def _insert(user_id: str, name: str):
-    folders_collection.insert_one({"_id": str(uuid4()), "user_id": user_id, "name": name, "key": name.lower()})
+    docs = _sorted_docs(user_id)
+    _number_folders(user_id, docs)
+    folders_collection.insert_one(
+        {"_id": str(uuid4()), "user_id": user_id, "name": name, "key": name.lower(), "order": len(docs)}
+    )
 
 
 def create_folder(user_id: str, name: str) -> str:
@@ -63,14 +86,27 @@ def ensure_folder(user_id: str, name: str):
 
 
 def list_folders(user_id: str) -> list:
-    """The user's folders, sorted. Folders that so far only existed because
-    a note uses them (saved by an older app or another device) are stored
-    now, so they stay when their last note moves out."""
-    for name in notes_collection.distinct("list_name", {"user_id": user_id}):
-        if isinstance(name, str):
-            ensure_folder(user_id, name)
-    names = [d["name"] for d in folders_collection.find({"user_id": user_id}, {"name": 1})]
-    return sorted(names, key=str.lower)
+    """The user's folders in their order. Folders that so far only existed
+    because a note uses them (saved by an older app or another device) are
+    stored now (at the end), so they stay when their last note moves out."""
+    for name in sorted(n for n in notes_collection.distinct("list_name", {"user_id": user_id}) if isinstance(n, str)):
+        ensure_folder(user_id, name)
+    docs = _sorted_docs(user_id)
+    _number_folders(user_id, docs)
+    return [d["name"] for d in docs]
+
+
+def set_folder_order(user_id: str, names: list) -> list:
+    """Put the named folders first, in this order (names match with any
+    capitals; unknown ones are ignored). Folders not named keep their order
+    after them. Returns the new order."""
+    docs = _sorted_docs(user_id)
+    rank = {}
+    for name in names:
+        rank.setdefault(" ".join(name.split()).lower(), len(rank))
+    docs.sort(key=lambda d: rank.get(d["name"].lower(), len(rank)))  # stable: the rest keep their order
+    _number_folders(user_id, docs)
+    return [d["name"] for d in docs]
 
 
 def delete_folder(user_id: str, name: str) -> dict:

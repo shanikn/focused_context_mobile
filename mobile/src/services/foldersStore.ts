@@ -1,18 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ApiError } from "../api/client";
-import { createFolder, deleteFolder, listFolders } from "../api/folders";
+import { createFolder, deleteFolder, listFolders, saveFolderOrder } from "../api/folders";
 import { getCustomLists } from "../lib/listPrefs";
 
-// The user's folders: kept on the server so they stay until deleted (even
-// when empty), with a copy on the phone for when it's offline. Folders that
+// The user's folders, in the order they arranged: kept on the server so they
+// stay until deleted (even when empty), with a copy on the phone for when it's
+// offline. New folders go at the end. Folders that
 // earlier versions kept only on this phone (focusedcontext.customLists) are
 // uploaded once.
 
 export const FOLDERS_CACHE_KEY = "focusedcontext.folders";
 const LEGACY_LISTS_KEY = "focusedcontext.customLists";
 
-const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" });
-
+// the lists one after another, without repeats (any capitals); order kept
 function merged(...lists: string[][]): string[] {
   const seen = new Map<string, string>();
   for (const name of lists.flat()) {
@@ -21,7 +21,7 @@ function merged(...lists: string[][]): string[] {
       seen.set(key, name.trim());
     }
   }
-  return [...seen.values()].sort(byName);
+  return [...seen.values()];
 }
 
 async function readCache(): Promise<string[]> {
@@ -93,4 +93,19 @@ export async function removeFolder(name: string): Promise<{ folders: string[]; m
   const folders = (await readCache()).filter((f) => f.toLowerCase() !== name.toLowerCase());
   await writeCache(folders);
   return { folders, moved };
+}
+
+// Saves a new order. The phone's copy changes at once (for offline) and goes
+// back to the old order if the server can't save it; then this throws.
+export async function reorderFolders(names: string[]): Promise<string[]> {
+  const previous = await readCache();
+  await writeCache(names);
+  try {
+    const folders = await saveFolderOrder(names);
+    await writeCache(folders);
+    return folders;
+  } catch (e) {
+    await writeCache(previous);
+    throw e;
+  }
 }

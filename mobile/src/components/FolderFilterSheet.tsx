@@ -1,13 +1,83 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  AccessibilityActionEvent,
+  Modal,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { GENERAL } from "../lib/folderOrder";
+import { dragTargetIndex, moveItem } from "../lib/reorder";
 import { TextButton } from "./ui";
 import { MIN_TOUCH_TARGET, Theme, fonts, radius, spacing } from "../theme";
 import { useTheme, useThemedStyles } from "../ThemeContext";
 
+// every row is this tall, so a drag distance tells which row it's over
+const ROW_HEIGHT = MIN_TOUCH_TARGET + 4;
+
+const MOVE_ACTIONS = [
+  { name: "moveUp", label: "Move up" },
+  { name: "moveDown", label: "Move down" },
+];
+
+// The drag handle on a folder row. It takes the touch from the list, so the
+// sheet doesn't scroll while a folder is dragged. Screen readers get Move up /
+// Move down instead.
+function DragHandle({
+  onStart,
+  onMove,
+  onEnd,
+  accessibilityLabel,
+  onAccessibilityAction,
+  color,
+  style,
+}: {
+  onStart: () => void;
+  onMove: (dy: number) => void;
+  onEnd: (dy: number) => void;
+  accessibilityLabel: string;
+  onAccessibilityAction: (event: AccessibilityActionEvent) => void;
+  color: string;
+  style: object;
+}) {
+  // the responder is made once; it calls the latest callbacks
+  const latest = useRef({ onStart, onMove, onEnd });
+  latest.current = { onStart, onMove, onEnd };
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => latest.current.onStart(),
+      onPanResponderMove: (_e, g) => latest.current.onMove(g.dy),
+      onPanResponderRelease: (_e, g) => latest.current.onEnd(g.dy),
+      onPanResponderTerminate: (_e, g) => latest.current.onEnd(g.dy),
+    })
+  ).current;
+  return (
+    <View
+      {...responder.panHandlers}
+      style={style}
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint="Drag up or down to move this folder"
+      accessibilityActions={MOVE_ACTIONS}
+      onAccessibilityAction={onAccessibilityAction}
+    >
+      <Ionicons name="reorder-three-outline" size={24} color={color} />
+    </View>
+  );
+}
+
 // The notes list's folder filter: every folder (empty ones too) with a
 // checkbox. Checking applies right away; none checked shows every note.
+// General stays first; the other folders can be dragged into any order.
 export default function FolderFilterSheet({
   visible,
   folders,
@@ -15,18 +85,105 @@ export default function FolderFilterSheet({
   onToggle,
   onClear,
   onDelete,
+  onReorder,
   onClose,
 }: {
   visible: boolean;
-  folders: string[]; // General first, then the others (lib/folderOrder.ts)
+  folders: string[]; // General first, then the user's order (lib/folderOrder.ts)
   checked: string[];
   onToggle: (name: string) => void;
   onClear: () => void;
   onDelete: (name: string) => void; // asks first; General can't be deleted
+  onReorder: (names: string[]) => void; // the folders after General, in their new order
   onClose: () => void;
 }) {
   const { colors, type } = useTheme();
   const styles = useThemedStyles(makeStyles);
+  const movable = folders.filter((name) => name !== GENERAL);
+  const [drag, setDrag] = useState<{ name: string; from: number; dy: number } | null>(null);
+  const dragRef = useRef(drag);
+  dragRef.current = drag;
+
+  const target = drag ? dragTargetIndex(drag.from, drag.dy, ROW_HEIGHT, movable.length) : -1;
+  // while dragging, the other rows make room where the folder would land
+  const shown = drag ? moveItem(movable, drag.from, target) : movable;
+
+  const startDrag = (name: string) => setDrag({ name, from: movable.indexOf(name), dy: 0 });
+  const moveDrag = (dy: number) => setDrag((d) => (d ? { ...d, dy } : d));
+  const endDrag = (dy: number) => {
+    const d = dragRef.current;
+    setDrag(null);
+    if (!d) {
+      return;
+    }
+    const to = dragTargetIndex(d.from, dy, ROW_HEIGHT, movable.length);
+    if (to !== d.from) {
+      onReorder(moveItem(movable, d.from, to));
+    }
+  };
+
+  const moveBy = (name: string, step: number) => {
+    const from = movable.indexOf(name);
+    const to = from + step;
+    if (from >= 0 && to >= 0 && to < movable.length) {
+      onReorder(moveItem(movable, from, to));
+    }
+  };
+
+  const renderRow = (name: string) => {
+    const isChecked = checked.includes(name);
+    const isDragged = drag?.name === name;
+    return (
+      <View
+        key={name}
+        style={[
+          styles.row,
+          isDragged && styles.dragged,
+          isDragged && { transform: [{ translateY: drag!.dy - (target - drag!.from) * ROW_HEIGHT }] },
+        ]}
+      >
+        <TouchableOpacity
+          testID="folder-option"
+          style={styles.option}
+          onPress={() => onToggle(name)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: isChecked }}
+          accessibilityLabel={name}
+        >
+          <Ionicons
+            name={isChecked ? "checkbox" : "square-outline"}
+            size={22}
+            color={isChecked ? colors.primary : colors.textMuted}
+          />
+          <Text style={[type.body, styles.name]} numberOfLines={1}>
+            {name}
+          </Text>
+        </TouchableOpacity>
+        {name !== GENERAL && (
+          <>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => onDelete(name)}
+              accessibilityRole="button"
+              accessibilityLabel={`Delete folder ${name}`}
+            >
+              <Ionicons name="trash-outline" size={20} color={colors.danger} />
+            </TouchableOpacity>
+            <DragHandle
+              style={styles.iconButton}
+              color={colors.textMuted}
+              accessibilityLabel={`Reorder ${name}`}
+              onAccessibilityAction={(e) => moveBy(name, e.nativeEvent.actionName === "moveUp" ? -1 : 1)}
+              onStart={() => startDrag(name)}
+              onMove={moveDrag}
+              onEnd={endDrag}
+            />
+          </>
+        )}
+      </View>
+    );
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close">
@@ -35,41 +192,9 @@ export default function FolderFilterSheet({
             <Text style={[type.cardTitle, styles.title]}>Show folders</Text>
             <TextButton label="Clear" onPress={onClear} disabled={checked.length === 0} />
           </View>
-          <ScrollView style={styles.list}>
-            {folders.map((name) => {
-              const isChecked = checked.includes(name);
-              return (
-                <View key={name} style={styles.row}>
-                  <TouchableOpacity
-                    testID="folder-option"
-                    style={styles.option}
-                    onPress={() => onToggle(name)}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: isChecked }}
-                    accessibilityLabel={name}
-                  >
-                    <Ionicons
-                      name={isChecked ? "checkbox" : "square-outline"}
-                      size={22}
-                      color={isChecked ? colors.primary : colors.textMuted}
-                    />
-                    <Text style={[type.body, styles.name]} numberOfLines={1}>
-                      {name}
-                    </Text>
-                  </TouchableOpacity>
-                  {name !== GENERAL && (
-                    <TouchableOpacity
-                      style={styles.delete}
-                      onPress={() => onDelete(name)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Delete folder ${name}`}
-                    >
-                      <Ionicons name="trash-outline" size={20} color={colors.danger} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              );
-            })}
+          <ScrollView style={styles.list} scrollEnabled={!drag}>
+            {renderRow(GENERAL)}
+            {shown.map(renderRow)}
           </ScrollView>
           <TouchableOpacity style={styles.done} onPress={onClose} accessibilityRole="button" accessibilityLabel="Done">
             <Text style={styles.doneText}>Done</Text>
@@ -94,10 +219,20 @@ const makeStyles = ({ colors }: Theme) =>
     header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
     title: { flex: 1 },
     list: { flexGrow: 0 },
-    row: { flexDirection: "row", alignItems: "center" },
-    option: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12, minHeight: MIN_TOUCH_TARGET + 4 },
+    row: { flexDirection: "row", alignItems: "center", height: ROW_HEIGHT, backgroundColor: colors.surface },
+    // the folder being dragged floats above the others
+    dragged: {
+      zIndex: 1,
+      elevation: 6,
+      borderRadius: 12,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+    },
+    option: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12, height: ROW_HEIGHT },
     name: { flexShrink: 1 },
-    delete: { width: MIN_TOUCH_TARGET, height: MIN_TOUCH_TARGET, alignItems: "center", justifyContent: "center" },
+    iconButton: { width: MIN_TOUCH_TARGET, height: MIN_TOUCH_TARGET, alignItems: "center", justifyContent: "center" },
     done: {
       marginTop: 12,
       height: MIN_TOUCH_TARGET,

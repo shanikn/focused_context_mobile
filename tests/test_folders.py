@@ -57,11 +57,11 @@ def test_folders_only_used_by_notes_are_kept_from_now_on():
     assert "Trips" in _names()
 
 
-def test_sorted_and_general_is_never_stored():
+def test_new_folders_go_at_the_end_and_general_is_never_stored():
     for name in ("Work", "Games", "art"):
         client.post("/folders/", json={"name": name}, headers=AS_A)
     _note("x", "General")
-    assert _names() == ["art", "Games", "Work"]
+    assert _names() == ["Work", "Games", "art"]
 
 
 @pytest.mark.parametrize("name", ["", "   ", "General", "general", "All", "x" * 51])
@@ -126,3 +126,69 @@ def test_requires_sign_in():
     assert client.get("/folders/").status_code == 401
     assert client.post("/folders/", json={"name": "x"}).status_code == 401
     assert client.delete("/folders/x").status_code == 401
+    assert client.put("/folders/order", json={"names": []}).status_code == 401
+
+
+# ---- the user's own folder order ----
+
+def _order(names, headers=AS_A):
+    return client.put("/folders/order", json={"names": names}, headers=headers)
+
+
+def test_save_an_order_and_it_is_listed_that_way():
+    for name in ("Work", "Games", "Trips"):
+        client.post("/folders/", json={"name": name}, headers=AS_A)
+    res = _order(["Trips", "Work", "Games"])
+    assert res.status_code == 200
+    assert [f["name"] for f in res.json()] == ["Trips", "Work", "Games"]
+    assert _names() == ["Trips", "Work", "Games"]
+
+
+def test_a_new_folder_goes_after_the_saved_order():
+    for name in ("Work", "Games"):
+        client.post("/folders/", json={"name": name}, headers=AS_A)
+    _order(["Games", "Work"])
+    client.post("/folders/", json={"name": "Art"}, headers=AS_A)
+    _note("pack", "Trips")  # a folder made by saving a note goes last too
+    assert _names() == ["Games", "Work", "Art", "Trips"]
+
+
+def test_order_matches_names_with_any_capitals_and_ignores_unknown_ones():
+    for name in ("Work", "Games", "Trips"):
+        client.post("/folders/", json={"name": name}, headers=AS_A)
+    # "Nope" isn't a folder; Work isn't mentioned, so it keeps its place after the others
+    assert [f["name"] for f in _order(["trips", "Nope", "GAMES"]).json()] == ["Trips", "Games", "Work"]
+    assert "Nope" not in _names()
+
+
+def test_folders_saved_before_orders_existed_list_a_to_z_then_new_ones():
+    for name in ("Work", "art", "Games"):
+        folders.folders_collection.insert_one(
+            {"_id": f"old-{name}", "user_id": A, "name": name, "key": name.lower()}
+        )
+    assert _names() == ["art", "Games", "Work"]
+    client.post("/folders/", json={"name": "Trips"}, headers=AS_A)
+    assert _names() == ["art", "Games", "Work", "Trips"]
+
+
+def test_each_user_has_their_own_order():
+    for headers in (AS_A, AS_B):
+        for name in ("Work", "Games"):
+            client.post("/folders/", json={"name": name}, headers=headers)
+    _order(["Games", "Work"], headers=AS_A)
+    assert _names(AS_A) == ["Games", "Work"]
+    assert _names(AS_B) == ["Work", "Games"]
+
+
+def test_a_deleted_folder_made_again_goes_at_the_end():
+    for name in ("Work", "Games", "Trips"):
+        client.post("/folders/", json={"name": name}, headers=AS_A)
+    client.delete("/folders/Work", headers=AS_A)
+    client.post("/folders/", json={"name": "Work"}, headers=AS_A)
+    assert _names() == ["Games", "Trips", "Work"]
+
+
+@pytest.mark.parametrize("body", [{}, {"names": "Work"}, {"names": [1, 2]}, {"names": ["x" * 201]},
+                                  {"names": ["a"] * 501}])
+def test_a_bad_order_is_422(body):
+    assert client.put("/folders/order", json=body, headers=AS_A).status_code == 422

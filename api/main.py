@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import re  # noqa: E402
-from typing import Union  # noqa: E402
+from typing import Annotated, List, Union  # noqa: E402
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr  # noqa: E402
 from fastapi import Body, FastAPI, Header, HTTPException, Query  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -32,7 +32,7 @@ import geocode  # noqa: E402
 import nearby  # noqa: E402
 import maps_links  # noqa: E402
 from folders import (  # noqa: E402
-    FolderError, create_folder, delete_folder, ensure_folder, ensure_folder_indexes, list_folders,
+    FolderError, create_folder, delete_folder, ensure_folder, ensure_folder_indexes, list_folders, set_folder_order,
 )
 import ratelimit  # noqa: E402
 
@@ -183,6 +183,8 @@ ACCOUNT_DELETE_LIMIT = ratelimit.limiter("account-delete", [(3, 3600)])
 # adding, changing or deleting a place re-tags all the user's notes
 PLACE_WRITE_LIMIT = ratelimit.limiter("place-write", [(20, 60)])
 FOLDER_WRITE_LIMIT = ratelimit.limiter("folder-write", [(20, 60)])
+# each drag in the folder list saves the order
+FOLDER_ORDER_LIMIT = ratelimit.limiter("folder-order", [(30, 60)])
 
 
 def _limit_message(what: str, window: int) -> str:
@@ -533,7 +535,7 @@ class FolderRequest(BaseModel):
 
 @app.get("/folders/")
 def get_folders(authorization: Optional[str] = Header(None)):
-    """The user's folders (General is implicit), sorted, including empty ones."""
+    """The user's folders (General is implicit) in their order, including empty ones."""
     user_id = require_user_id(authorization)
     return [{"name": name} for name in list_folders(user_id)]
 
@@ -546,6 +548,19 @@ def add_folder(request: FolderRequest, authorization: Optional[str] = Header(Non
         return {"name": create_folder(user_id, request.name)}
     except FolderError as e:
         raise HTTPException(status_code=409 if e.kind == "exists" else 422, detail=str(e))
+
+
+class FolderOrderRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    names: List[Annotated[StrictStr, Field(max_length=200)]] = Field(..., max_length=500)
+
+
+@app.put("/folders/order")
+def save_folder_order(request: FolderOrderRequest, authorization: Optional[str] = Header(None)):
+    """Save the user's folder order (General stays first on the phone)."""
+    user_id = require_user_id(authorization)
+    enforce_limit(FOLDER_ORDER_LIMIT, user_id, "folder order changes")
+    return [{"name": name} for name in set_folder_order(user_id, request.names)]
 
 
 @app.delete("/folders/{name}")

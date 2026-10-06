@@ -18,7 +18,7 @@ import { getNotes } from "../api/notes";
 import { Note } from "../types/notes";
 import NoteCard from "../components/NoteCard";
 import { NotesStackParamList } from "../../App";
-import { addFolder, loadFolders, removeFolder } from "../services/foldersStore";
+import { addFolder, loadFolders, removeFolder, reorderFolders } from "../services/foldersStore";
 import { GENERAL, folderNames } from "../lib/folderOrder";
 import { getFolderSelection, setFolderSelection } from "../lib/folderSelection";
 import FolderFilterSheet from "../components/FolderFilterSheet";
@@ -218,6 +218,19 @@ export default function NotesListScreen() {
         },
       },
     ]);
+  };
+
+  // the folders under General, in the order just dragged; shown at once,
+  // put back if the server can't save it
+  const handleReorderFolders = async (names: string[]) => {
+    const previous = customLists;
+    setCustomLists(names);
+    try {
+      setCustomLists(await reorderFolders(names));
+    } catch {
+      setCustomLists(previous);
+      Alert.alert("Couldn't save the folder order", "Check your connection and try again.");
+    }
   };
 
   const handleCreateList = async () => {
@@ -425,6 +438,7 @@ export default function NotesListScreen() {
         onToggle={toggleFolder}
         onClear={() => chooseFolders([])}
         onDelete={handleDeleteFolder}
+        onReorder={handleReorderFolders}
         onClose={() => setShowFolderFilter(false)}
       />
 
