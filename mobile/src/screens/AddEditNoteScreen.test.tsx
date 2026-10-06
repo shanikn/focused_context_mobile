@@ -265,3 +265,8 @@ test("too many saves: the server's message is shown", async () => {
   expect(alert).toHaveBeenCalledWith("Error", "Too many changes, try again in a minute.");
   alert.mockRestore();
 });
+
+test("the note text is limited to 5000 characters, like the server", async () => {
+  const tree = await renderScreen({ note: EXISTING });
+  expect(tree.root.findByType(TextInput).props.maxLength).toBe(5000);
+});

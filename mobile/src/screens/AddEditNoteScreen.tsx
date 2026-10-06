@@ -27,6 +27,9 @@ import { Card, Chip, ChipRow, PrimaryButton, TextButton, ToggleRow } from "../co
 import { MIN_TOUCH_TARGET, Theme, fonts, spacing } from "../theme";
 import { useTheme, useThemedStyles } from "../ThemeContext";
 
+// the server rejects longer notes (api/main.py MAX_NOTE_CHARS)
+const MAX_NOTE_CHARS = 5000;
+
 type RouteParams = RouteProp<NotesStackParamList, "AddEditNote">;
 
 
@@ -267,6 +270,7 @@ export default function AddEditNoteScreen() {
             placeholderTextColor={colors.textMuted}
             value={content}
             onChangeText={setContent}
+            maxLength={MAX_NOTE_CHARS}
             multiline
             autoFocus
             textAlignVertical="top"
