@@ -97,6 +97,8 @@ test("sign-out clears note text kept for offline alerts, but not preferences", a
     ["smartmind.storeAlerts.pending", "{}"],
     ["smartmind.storeAlerts.enabled", "true"],
     ["focusedcontext.appearance", "dark"],
+    ["focusedcontext.folders", '["Games"]'],
+    ["focusedcontext.customLists", '["Trips"]'],
   ]);
   await clearOfflineData();
   expect((await AsyncStorage.getAllKeys()).slice().sort()).toEqual([

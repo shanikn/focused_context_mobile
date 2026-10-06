@@ -21,7 +21,7 @@ jest.mock("../api/notes", () => ({
   updateNote: jest.fn().mockResolvedValue({}),
   getNotes: jest.fn().mockResolvedValue([{ list_name: "Games" }, { list_name: "General" }]),
 }));
-jest.mock("../lib/listPrefs", () => ({ getCustomLists: jest.fn().mockResolvedValue(["Work"]) }));
+jest.mock("../services/foldersStore", () => ({ loadFolders: jest.fn().mockResolvedValue(["Work", "Empty"]) }));
 jest.mock("../services/scheduledReminders", () => ({ syncScheduledReminders: jest.fn() }));
 jest.mock("../services/storeAlerts", () => ({ syncStoreAlerts: jest.fn() }));
 jest.mock("../services/placesStore", () => ({
@@ -269,4 +269,9 @@ test("too many saves: the server's message is shown", async () => {
 test("the note text is limited to 5000 characters, like the server", async () => {
   const tree = await renderScreen({ note: EXISTING });
   expect(tree.root.findByType(TextInput).props.maxLength).toBe(5000);
+});
+
+test("the folder picker shows empty folders too", async () => {
+  const tree = await renderScreen({ note: EXISTING });
+  expect(allText(tree.root)).toContain("Empty");
 });

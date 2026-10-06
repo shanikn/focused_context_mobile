@@ -31,6 +31,9 @@ from auth import FirebaseDeleteError, delete_firebase_user, get_user_id  # noqa:
 import geocode  # noqa: E402
 import nearby  # noqa: E402
 import maps_links  # noqa: E402
+from folders import (  # noqa: E402
+    FolderError, create_folder, delete_folder, ensure_folder, ensure_folder_indexes, list_folders,
+)
 import ratelimit  # noqa: E402
 
 logging.basicConfig(
@@ -118,6 +121,7 @@ def ensure_indexes():
     try:
         ensure_note_indexes()
         ensure_place_indexes()
+        ensure_folder_indexes()
     except Exception:
         logging.exception("Creating MongoDB indexes failed")
 
@@ -178,6 +182,7 @@ NOTE_WRITE_LIMIT = ratelimit.limiter("note-write", [(60, 60)])  # create + updat
 ACCOUNT_DELETE_LIMIT = ratelimit.limiter("account-delete", [(3, 3600)])
 # adding, changing or deleting a place re-tags all the user's notes
 PLACE_WRITE_LIMIT = ratelimit.limiter("place-write", [(20, 60)])
+FOLDER_WRITE_LIMIT = ratelimit.limiter("folder-write", [(20, 60)])
 
 
 def _limit_message(what: str, window: int) -> str:
@@ -229,6 +234,8 @@ def create_note(
         user_id=user_id,
     )
     save_note(note)
+    # the folder stays even after its last note moves out
+    ensure_folder(user_id, note.list_name)
     # inline, like PUT: the phone syncs alarms right after saving, so the
     # date/time and place must already be there
     enrich_note(note)
@@ -350,6 +357,8 @@ def change_note(
     matched = update_note(note_id, fields, user_id=user_id)
     if matched == 0:
         raise HTTPException(status_code=404, detail="Note not found")
+    if "list_name" in fields:
+        ensure_folder(user_id, fields["list_name"])
     # re-categorize, re-infer context, and re-embed when content changes
     if _REENRICH_FIELDS & values.keys():
         doc = get_note_by_id(note_id, user_id=user_id)
@@ -514,6 +523,37 @@ def remove_place(place_id: str, authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=404, detail="Place not found")
     untag_place(user_id, place_id)
     return {"message": "place deleted"}
+
+
+# ---- note folders: kept until the user deletes them ----
+
+class FolderRequest(BaseModel):
+    name: str = Field(..., max_length=200)
+
+
+@app.get("/folders/")
+def get_folders(authorization: Optional[str] = Header(None)):
+    """The user's folders (General is implicit), sorted, including empty ones."""
+    user_id = require_user_id(authorization)
+    return [{"name": name} for name in list_folders(user_id)]
+
+
+@app.post("/folders/")
+def add_folder(request: FolderRequest, authorization: Optional[str] = Header(None)):
+    user_id = require_user_id(authorization)
+    enforce_limit(FOLDER_WRITE_LIMIT, user_id, "folder changes")
+    try:
+        return {"name": create_folder(user_id, request.name)}
+    except FolderError as e:
+        raise HTTPException(status_code=409 if e.kind == "exists" else 422, detail=str(e))
+
+
+@app.delete("/folders/{name}")
+def remove_folder(name: str, authorization: Optional[str] = Header(None)):
+    """Delete the folder; its notes move to General. Safe to repeat."""
+    user_id = require_user_id(authorization)
+    enforce_limit(FOLDER_WRITE_LIMIT, user_id, "folder changes")
+    return delete_folder(user_id, name)
 
 
 # ---- account deletion (required by Google Play) ----

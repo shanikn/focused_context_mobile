@@ -57,10 +57,10 @@ jest.mock("../api/notes", () => ({
   getNotes: jest.fn(async () => NOTES),
   deleteNote: jest.fn(),
 }));
-jest.mock("../lib/listPrefs", () => ({
-  getCustomLists: jest.fn().mockResolvedValue([]),
-  addCustomList: jest.fn(),
-  removeCustomList: jest.fn(),
+jest.mock("../services/foldersStore", () => ({
+  loadFolders: jest.fn().mockResolvedValue([]),
+  addFolder: jest.fn(),
+  removeFolder: jest.fn(),
 }));
 jest.mock("../services/scheduledReminders", () => ({ syncScheduledReminders: jest.fn() }));
 jest.mock("../services/storeAlerts", () => ({ syncStoreAlerts: jest.fn() }));
@@ -254,11 +254,114 @@ describe("loading errors", () => {
     expect(alertSpy).not.toHaveBeenCalled();
   });
 
-  test("folder list storage failing doesn't hide the notes", async () => {
-    const { getCustomLists } = jest.requireMock("../lib/listPrefs");
-    getCustomLists.mockRejectedValueOnce(new Error("storage"));
+  test("folder list failing to load doesn't hide the notes", async () => {
+    const { loadFolders } = jest.requireMock("../services/foldersStore");
+    loadFolders.mockRejectedValueOnce(new Error("storage"));
     const tree = await renderScreen();
     expect(shownNotes(tree)).toHaveLength(3);
     expect(alertSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("folders stay until deleted", () => {
+  const store = jest.requireMock("../services/foldersStore");
+  const { deleteNote } = jest.requireMock("../api/notes");
+  let alertSpy: jest.SpyInstance;
+  const lastAlert = () => alertSpy.mock.calls.at(-1) as [string, string, { text: string; onPress?: () => unknown }[]];
+  const press = async (text: string) => {
+    const button = lastAlert()[2].find((b) => b.text === text)!;
+    await act(async () => {
+      await button.onPress?.();
+    });
+  };
+  const tabs = (tree: ReactTestRenderer) =>
+    tree.root
+      .findAll((n) => n.props.testID === "folder-tab" && typeof n.type === "string")
+      .map((n) => n.props.accessibilityLabel);
+
+  beforeEach(() => {
+    alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    store.addFolder.mockReset();
+    store.removeFolder.mockReset();
+    deleteNote.mockClear();
+    store.loadFolders.mockResolvedValue(["Games", "Trips"]);
+  });
+  afterEach(() => {
+    alertSpy.mockRestore();
+    store.loadFolders.mockResolvedValue([]);
+  });
+
+  test("an empty folder still has its tab", async () => {
+    const tree = await renderScreen();
+    expect(tabs(tree)).toEqual(["All", "General", "Games", "Trips", "Uni"]);
+  });
+
+  test("a Delete folder button on your folders, not on All or General", async () => {
+    const tree = await renderScreen();
+    expect(tree.root.findAllByType(TouchableOpacity).some((t) => t.props.accessibilityLabel?.startsWith("Delete folder"))).toBe(
+      false
+    );
+    await act(async () => byLabel(tree, "General").props.onPress());
+    expect(tree.root.findAllByType(TouchableOpacity).some((t) => t.props.accessibilityLabel?.startsWith("Delete folder"))).toBe(
+      false
+    );
+    await act(async () => byLabel(tree, "Games").props.onPress());
+    expect(byLabel(tree, "Delete folder Games")).toBeTruthy();
+  });
+
+  test("deleting an empty folder asks, then removes it", async () => {
+    store.removeFolder.mockResolvedValue({ folders: ["Trips"], moved: 0 });
+    const tree = await renderScreen();
+    await act(async () => byLabel(tree, "Games").props.onPress());
+    await act(async () => byLabel(tree, "Delete folder Games").props.onPress());
+    expect(lastAlert()[1]).toBe('Delete the folder "Games"?');
+    await press("Delete folder");
+    expect(store.removeFolder).toHaveBeenCalledWith("Games");
+    expect(tabs(tree)).toEqual(["All", "General", "Trips", "Uni"]);
+  });
+
+  test("a folder with notes: asks, then moves its notes to General (never deletes them)", async () => {
+    store.removeFolder.mockResolvedValue({ folders: ["Games", "Trips"], moved: 2 });
+    const tree = await renderScreen();
+    await act(async () => byLabel(tree, "Uni").props.onPress());
+    await act(async () => byLabel(tree, "Delete folder Uni").props.onPress());
+    expect(lastAlert()[1]).toBe('"Uni" has 2 notes. Delete the folder and move them to General?');
+    await press("Cancel");
+    expect(store.removeFolder).not.toHaveBeenCalled();
+    await act(async () => byLabel(tree, "Delete folder Uni").props.onPress());
+    await press("Delete folder");
+    expect(store.removeFolder).toHaveBeenCalledWith("Uni");
+    expect(deleteNote).not.toHaveBeenCalled();
+    expect(tabs(tree)).not.toContain("Uni");
+    await act(async () => byLabel(tree, "General").props.onPress());
+    expect(shownNotes(tree).sort()).toEqual(["Buy milk", "Study for the exam", "לקנות חלב"].sort());
+  });
+
+  test("a long press on a folder tab asks the same way", async () => {
+    const tree = await renderScreen();
+    const games = tree.root.findAll((n) => n.props.testID === "folder-tab" && n.props.accessibilityLabel === "Games")[0];
+    await act(async () => games.props.onLongPress());
+    expect(lastAlert()[1]).toBe('Delete the folder "Games"?');
+  });
+
+  test("a failed delete says so and keeps the folder", async () => {
+    store.removeFolder.mockRejectedValue(new TypeError("Network request failed"));
+    const tree = await renderScreen();
+    await act(async () => byLabel(tree, "Games").props.onPress());
+    await act(async () => byLabel(tree, "Delete folder Games").props.onPress());
+    await press("Delete folder");
+    expect(lastAlert()[0]).toBe("Couldn't delete the folder");
+    expect(tabs(tree)).toContain("Games");
+  });
+
+  test("creating a folder saves it on the server", async () => {
+    store.addFolder.mockResolvedValue(["Art", "Games", "Trips"]);
+    const tree = await renderScreen();
+    await act(async () => byLabel(tree, "Create a new folder").props.onPress());
+    const input = tree.root.findAllByType(TextInput).find((t) => t.props.placeholder === "Folder name")!;
+    await act(async () => input.props.onChangeText("Art"));
+    await act(async () => byLabel(tree, "Create").props.onPress());
+    expect(store.addFolder).toHaveBeenCalledWith("Art");
+    expect(tabs(tree)).toContain("Art");
   });
 });

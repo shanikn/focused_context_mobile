@@ -18,7 +18,8 @@ import { getNotes, deleteNote } from "../api/notes";
 import { Note } from "../types/notes";
 import NoteCard from "../components/NoteCard";
 import { NotesStackParamList } from "../../App";
-import { addCustomList, getCustomLists, removeCustomList } from "../lib/listPrefs";
+import { addFolder, loadFolders, removeFolder } from "../services/foldersStore";
+import { ApiError } from "../api/client";
 import { ALL, GENERAL, folderTabs } from "../lib/folderOrder";
 import { getNotesView, NotesView, notesViewSections, setNotesView } from "../lib/notesView";
 import { currentPlaceLabel } from "../lib/noteCardInfo";
@@ -102,7 +103,7 @@ export default function NotesListScreen() {
     try {
       const [data, savedLists, userPlaces, colorsByCategory, location] = await Promise.all([
         getNotes(),
-        getCustomLists().catch(() => null),
+        loadFolders().catch(() => null),
         loadPlaces().catch(() => []),
         getCategoryColors().catch(() => DEFAULT_CATEGORY_COLORS),
         getReminderLocation().catch(() => null),
@@ -160,27 +161,30 @@ export default function NotesListScreen() {
     }
   };
 
+  // Deleting a folder never deletes notes: they move to General (on the
+  // server). A folder with notes asks first, saying so.
   const handleDeleteFolder = (name: string) => {
     if (name === ALL || name === GENERAL) return;
-    const listNotes = notes.filter((n) => n.list_name === name);
-    Alert.alert("Delete List", `Delete "${name}" and its ${listNotes.length} note(s)?`, [
+    const count = notes.filter((n) => n.list_name === name).length;
+    const message =
+      count === 0
+        ? `Delete the folder "${name}"?`
+        : `"${name}" has ${count} ${count === 1 ? "note" : "notes"}. Delete the folder and move ${
+            count === 1 ? "it" : "them"
+          } to General?`;
+    Alert.alert("Delete folder", message, [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Delete",
+        text: "Delete folder",
         style: "destructive",
         onPress: async () => {
           try {
-            await Promise.all(listNotes.map((n) => deleteNote(n._id)));
-            setNotes((prev) => prev.filter((n) => n.list_name !== name));
-            syncScheduledReminders();
-            syncStoreAlerts();
-            if (listNotes.length === 0) {
-              const nextLists = await removeCustomList(name);
-              setCustomLists(nextLists);
-            }
+            const { folders } = await removeFolder(name);
+            setCustomLists(folders);
+            setNotes((prev) => prev.map((n) => (n.list_name === name ? { ...n, list_name: GENERAL } : n)));
             setActiveTab(ALL);
           } catch {
-            Alert.alert("Error", "Failed to delete list");
+            Alert.alert("Couldn't delete the folder", "Check your connection and try again.");
           }
         },
       },
@@ -200,7 +204,7 @@ export default function NotesListScreen() {
     }
 
     try {
-      const nextLists = await addCustomList(trimmed);
+      const nextLists = await addFolder(trimmed);
       setCustomLists(nextLists);
       setActiveTab(trimmed);
       setNewListName("");
@@ -305,12 +309,23 @@ export default function NotesListScreen() {
                   <Chip
                     key={name}
                     label={name}
+                    testID="folder-tab"
                     selected={activeTab === name}
                     onPress={() => setActiveTab(name)}
                     onLongPress={() => handleDeleteFolder(name)}
                   />
                 ))}
               </ChipRow>
+              {activeTab !== ALL && activeTab !== GENERAL && (
+                <View style={styles.folderActions}>
+                  <TextButton
+                    label="Delete folder"
+                    accessibilityLabel={`Delete folder ${activeTab}`}
+                    destructive
+                    onPress={() => handleDeleteFolder(activeTab)}
+                  />
+                </View>
+              )}
               <ChipRow scroll style={[styles.chipsContent, styles.categoryChips]}>
                 <Chip
                   label="All"
@@ -390,20 +405,30 @@ export default function NotesListScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={[type.cardTitle, styles.modalTitle]}>Create New List</Text>
+            <Text style={[type.cardTitle, styles.modalTitle]}>New folder</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="List name"
+              placeholder="Folder name"
               placeholderTextColor={colors.textMuted}
               value={newListName}
               onChangeText={setNewListName}
               autoFocus
             />
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalAction} onPress={() => setShowCreateListModal(false)}>
+              <TouchableOpacity
+                style={styles.modalAction}
+                onPress={() => setShowCreateListModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
                 <Text style={styles.modalActionSecondary}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalAction} onPress={handleCreateList}>
+              <TouchableOpacity
+                style={styles.modalAction}
+                onPress={handleCreateList}
+                accessibilityRole="button"
+                accessibilityLabel="Create"
+              >
                 <Text style={styles.modalActionPrimary}>Create</Text>
               </TouchableOpacity>
             </View>
@@ -478,6 +503,7 @@ const makeStyles = ({ colors, type }: Theme) =>
   viewOptionTextSelected: { color: colors.onPrimary },
   chips: { flexGrow: 0, paddingBottom: 4 },
   categoryChips: { paddingTop: 8 },
+  folderActions: { paddingHorizontal: spacing.screen, alignItems: "flex-start" },
   searchWrap: { paddingHorizontal: spacing.screen, paddingBottom: 10 },
   search: {
     flexDirection: "row",

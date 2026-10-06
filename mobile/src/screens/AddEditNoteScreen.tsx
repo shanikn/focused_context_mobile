@@ -16,7 +16,7 @@ import { useNavigation, useRoute, useFocusEffect, RouteProp } from "@react-navig
 import { apiErrorMessage } from "../api/client";
 import { createNote, updateNote, getNotes } from "../api/notes";
 import { NotesStackParamList } from "../../App";
-import { getCustomLists } from "../lib/listPrefs";
+import { loadFolders } from "../services/foldersStore";
 import { folderNames, GENERAL } from "../lib/folderOrder";
 import { syncScheduledReminders } from "../services/scheduledReminders";
 import { syncStoreAlerts } from "../services/storeAlerts";
@@ -142,7 +142,7 @@ export default function AddEditNoteScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      Promise.all([getNotes(), getCustomLists()])
+      Promise.all([getNotes(), loadFolders().catch(() => [])])
         .then(([notes, customLists]) => {
           // General first, then the other folders alphabetically
           setExistingLists(folderNames(notes, customLists));

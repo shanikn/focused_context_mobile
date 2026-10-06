@@ -8,8 +8,11 @@ import { Note } from "../types/notes";
 
 export const ALERT_NOTES_KEY = "focusedcontext.alertNotes";
 
-// errand text and store data kept by the store alerts (services/storeAlerts.ts)
+// the user's folder names (services/foldersStore.ts; the old phone-only list),
+// and errand text and store data kept by the store alerts (services/storeAlerts.ts)
 const STORE_ALERT_DATA_KEYS = [
+  "focusedcontext.folders",
+  "focusedcontext.customLists",
   "smartmind.storeAlerts.errands",
   "smartmind.storeAlerts.cache",
   "smartmind.storeAlerts.regions",

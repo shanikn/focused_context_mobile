@@ -14,6 +14,7 @@ from notepad import (
 )
 from typing import Optional
 from places import delete_all_places, get_places
+from folders import delete_all_folders
 
 logger = logging.getLogger(__name__)
 
@@ -254,17 +255,21 @@ def sync_vectors():
 
 
 def delete_user_data(user_id: str) -> dict:
-    """Everything stored for this user: notes (with their feedback), places
-    and vectors. Never for an empty id (that would mean unowned notes)."""
+    """Everything stored for this user: notes (with their feedback), places,
+    folders and vectors. Never for an empty id (that would mean unowned notes)."""
     if not user_id:
         raise ValueError("a user id is required")
     note_ids = delete_all_notes(user_id)
     places = delete_all_places(user_id)
+    folders = delete_all_folders(user_id)
     # vectors tagged with the owner, and any old untagged ones of these notes
     tagged = collection.get(where={"user_id": user_id})["ids"]
     untagged = collection.get(ids=note_ids)["ids"] if note_ids else []
     vectors = sorted(set(tagged) | set(untagged))
     if vectors:
         collection.delete(ids=vectors)
-    logger.info("Account data deleted: %d notes, %d places, %d vectors", len(note_ids), places, len(vectors))
-    return {"notes": len(note_ids), "places": places, "vectors": len(vectors)}
+    logger.info(
+        "Account data deleted: %d notes, %d places, %d folders, %d vectors",
+        len(note_ids), places, folders, len(vectors),
+    )
+    return {"notes": len(note_ids), "places": places, "vectors": len(vectors), "folders": folders}
