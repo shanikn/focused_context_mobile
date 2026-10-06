@@ -8,7 +8,7 @@ load_dotenv()
 
 import re  # noqa: E402
 from typing import Union  # noqa: E402
-from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr  # noqa: E402
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr  # noqa: E402
 from fastapi import Body, FastAPI, Header, HTTPException, Query  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from notepad import (  # noqa: E402
@@ -39,8 +39,13 @@ logging.basicConfig(
 )
 
 
+# input size limits: a note's text, and an address search
+MAX_NOTE_CHARS = 5000
+MAX_SEARCH_CHARS = 200
+
+
 class NoteRequest(BaseModel):
-    content: str
+    content: str = Field(..., max_length=MAX_NOTE_CHARS)
     list_name: str = "General"
     reminders_enabled: bool = True
     category_explicit: bool = False
@@ -60,7 +65,7 @@ class NoteUpdate(BaseModel):
     hour and minute may be numbers or numeric strings."""
     model_config = ConfigDict(extra="forbid")
 
-    content: str = None
+    content: str = Field(None, max_length=MAX_NOTE_CHARS)
     list_name: str = None
     category: str = None
     category_explicit: bool = None
@@ -171,6 +176,8 @@ NEARBY_LIMIT = ratelimit.limiter("nearby", [(30, 60)])
 LINK_LIMIT = ratelimit.limiter("resolve-link", [(30, 60)])
 NOTE_WRITE_LIMIT = ratelimit.limiter("note-write", [(60, 60)])  # create + update together
 ACCOUNT_DELETE_LIMIT = ratelimit.limiter("account-delete", [(3, 3600)])
+# adding, changing or deleting a place re-tags all the user's notes
+PLACE_WRITE_LIMIT = ratelimit.limiter("place-write", [(20, 60)])
 
 
 def _limit_message(what: str, window: int) -> str:
@@ -309,7 +316,7 @@ def _note_fields(values: dict) -> dict:
 def change_note(
     note_id: str,
     body: Optional[NoteUpdate] = Body(None),
-    content: Optional[str] = None,
+    content: Optional[str] = Query(None, max_length=MAX_NOTE_CHARS),
     list_name: Optional[str] = None,
     category: Optional[str] = None,
     category_explicit: Optional[bool] = None,
@@ -381,7 +388,7 @@ _GEOCODE_STATUS = {"rate_limited": 429, "network": 504}
 
 @app.get("/places/search")
 def search_places(
-    q: str,
+    q: str = Query(..., max_length=MAX_SEARCH_CHARS),
     lat: Optional[float] = Query(None, ge=-90, le=90),
     lon: Optional[float] = Query(None, ge=-180, le=180),
     authorization: Optional[str] = Header(None),
@@ -470,6 +477,7 @@ def list_places(authorization: Optional[str] = Header(None)):
 @app.post("/places/")
 def add_place(request: PlaceRequest, authorization: Optional[str] = Header(None)):
     user_id = require_user_id(authorization)
+    enforce_limit(PLACE_WRITE_LIMIT, user_id, "place changes")
     try:
         place = create_place(user_id, request.name, request.keywords)
     except ValueError as e:
@@ -485,6 +493,7 @@ def change_place(
     authorization: Optional[str] = Header(None),
 ):
     user_id = require_user_id(authorization)
+    enforce_limit(PLACE_WRITE_LIMIT, user_id, "place changes")
     try:
         found = update_place(user_id, place_id, request.name, request.keywords)
     except ValueError as e:
@@ -500,6 +509,7 @@ def change_place(
 @app.delete("/places/{place_id}")
 def remove_place(place_id: str, authorization: Optional[str] = Header(None)):
     user_id = require_user_id(authorization)
+    enforce_limit(PLACE_WRITE_LIMIT, user_id, "place changes")
     if not delete_place(user_id, place_id):
         raise HTTPException(status_code=404, detail="Place not found")
     untag_place(user_id, place_id)

@@ -141,3 +141,26 @@ def test_unauthenticated_calls_dont_use_anyones_budget(limits_on, monkeypatch):
 def test_off_for_the_rest_of_the_test_suite():
     import os
     assert os.environ.get("RATE_LIMITS") == "off"  # set by conftest; the fixture above turns it on
+
+
+def test_place_changes_20_a_minute_together(limits_on, monkeypatch):
+    from places import Place
+    place = Place(id="p1", user_id="rl-user-a", name="Gym")
+    monkeypatch.setattr(main, "create_place", lambda user_id, name, keywords: place)
+    monkeypatch.setattr(main, "update_place", lambda *a, **k: True)
+    monkeypatch.setattr(main, "resolve_place", lambda *a, **k: place)
+    monkeypatch.setattr(main, "delete_place", lambda *a, **k: True)
+    monkeypatch.setattr(main, "reenrich_user_notes", lambda user_id: None)
+    monkeypatch.setattr(main, "untag_place", lambda *a, **k: None)
+    statuses = _hit(10, lambda: client.post("/places/", json={"name": "Gym"}, headers=AS_A))
+    statuses += _hit(5, lambda: client.put("/places/p1", json={"name": "Gym 2"}, headers=AS_A))
+    statuses += _hit(5, lambda: client.delete("/places/p1", headers=AS_A))
+    assert set(statuses) == {200}
+    res = client.post("/places/", json={"name": "Gym"}, headers=AS_A)
+    assert res.status_code == 429
+    assert res.json()["detail"]["message"] == "Too many place changes, try again in a minute."
+    assert client.delete("/places/p1", headers=AS_A).status_code == 429
+    # listing places isn't limited, and another user has their own budget
+    monkeypatch.setattr(main, "get_places", lambda user_id: [])
+    assert client.get("/places/", headers=AS_A).status_code == 200
+    assert client.post("/places/", json={"name": "Gym"}, headers=AS_B).status_code == 200
