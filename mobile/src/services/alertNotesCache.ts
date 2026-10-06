@@ -20,6 +20,9 @@ const STORE_ALERT_DATA_KEYS = [
   "smartmind.storeAlerts.names",
   "smartmind.storeAlerts.visits",
   "smartmind.storeAlerts.pending",
+  // when you left each place, and which missed time + place notes were alerted (placeTimeReminders.ts)
+  "focusedcontext.placeExits",
+  "focusedcontext.placeTimeAlerted",
 ];
 
 interface Saved {
