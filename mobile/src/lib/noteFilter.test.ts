@@ -1,4 +1,4 @@
-import { ALL_CATEGORIES, filterNotes, hasActiveFilters, normalizeForSearch } from "./noteFilter";
+import { filterNotes, hasActiveFilters, normalizeForSearch } from "./noteFilter";
 import { Note } from "../types/notes";
 
 let n = 0;
@@ -17,7 +17,7 @@ const unknownCategory = note("something odd", { category: "weird" });
 const ALL_NOTES = [buyMilk, exam, hebrew, niqqud, idea, noFolder, unknownCategory];
 
 const ids = (notes: Note[]) => notes.map((x) => x._id);
-const all = { folders: [] as string[], category: ALL_CATEGORIES, query: "" };
+const all = { folder: "All", categories: [] as string[], query: "" };
 
 describe("normalizeForSearch", () => {
   test("lowercases, trims and collapses spaces", () => {
@@ -57,33 +57,36 @@ describe("filterNotes", () => {
     });
   });
 
-  describe("category", () => {
-    test("only notes in that category", () => {
-      expect(ids(filterNotes(ALL_NOTES, { ...all, category: "errand" }))).toEqual([
+  describe("categories", () => {
+    test("none checked: every category", () => {
+      expect(ids(filterNotes(ALL_NOTES, { ...all, categories: [] }))).toEqual(ids(ALL_NOTES));
+    });
+
+    test("one checked: only notes of that kind", () => {
+      expect(ids(filterNotes(ALL_NOTES, { ...all, categories: ["errand"] }))).toEqual([
         buyMilk._id,
         hebrew._id,
         niqqud._id,
       ]);
     });
 
+    test("several checked: notes of any of them, in the same order", () => {
+      expect(ids(filterNotes(ALL_NOTES, { ...all, categories: ["idea", "event"] }))).toEqual([exam._id, idea._id]);
+    });
+
     test("old and unknown categories count as To-do", () => {
-      expect(ids(filterNotes(ALL_NOTES, { ...all, category: "todo" }))).toEqual([noFolder._id, unknownCategory._id]);
-      expect(ids(filterNotes(ALL_NOTES, { ...all, category: "event" }))).toEqual([exam._id]);
+      expect(ids(filterNotes(ALL_NOTES, { ...all, categories: ["todo"] }))).toEqual([noFolder._id, unknownCategory._id]);
     });
   });
 
-  describe("folders", () => {
-    test("none checked: every folder", () => {
-      expect(ids(filterNotes(ALL_NOTES, { ...all, folders: [] }))).toEqual(ids(ALL_NOTES));
-    });
-
-    test("several checked: notes from any of them, in the same order", () => {
-      expect(ids(filterNotes(ALL_NOTES, { ...all, folders: ["Uni", "Home"] }))).toEqual([exam._id, hebrew._id]);
+  describe("folder (one tab)", () => {
+    test("All: every folder", () => {
+      expect(ids(filterNotes(ALL_NOTES, { ...all, folder: "All" }))).toEqual(ids(ALL_NOTES));
     });
 
     test("only notes in that folder; no folder counts as General", () => {
-      expect(ids(filterNotes(ALL_NOTES, { ...all, folders: ["Uni"] }))).toEqual([exam._id]);
-      expect(ids(filterNotes(ALL_NOTES, { ...all, folders: ["General"] }))).toEqual([
+      expect(ids(filterNotes(ALL_NOTES, { ...all, folder: "Uni" }))).toEqual([exam._id]);
+      expect(ids(filterNotes(ALL_NOTES, { ...all, folder: "General" }))).toEqual([
         buyMilk._id,
         niqqud._id,
         idea._id,
@@ -93,21 +96,21 @@ describe("filterNotes", () => {
     });
   });
 
-  test("folder, category and search combine", () => {
-    expect(ids(filterNotes(ALL_NOTES, { folders: ["Home"], category: "errand", query: "חלב" }))).toEqual([
-      hebrew._id,
-    ]);
-    expect(ids(filterNotes(ALL_NOTES, { folders: ["General", "Uni"], category: "errand", query: "milk" }))).toEqual([
+  test("the folder AND one of the checked categories AND the search", () => {
+    expect(ids(filterNotes(ALL_NOTES, { folder: "Home", categories: ["errand"], query: "חלב" }))).toEqual([hebrew._id]);
+    expect(ids(filterNotes(ALL_NOTES, { folder: "General", categories: ["errand", "idea"], query: "" }))).toEqual([
       buyMilk._id,
+      niqqud._id,
+      idea._id,
     ]);
-    expect(filterNotes(ALL_NOTES, { folders: ["Uni"], category: "errand", query: "" })).toEqual([]);
+    expect(filterNotes(ALL_NOTES, { folder: "Uni", categories: ["errand"], query: "" })).toEqual([]);
   });
 });
 
-test("hasActiveFilters: a search, a category or checked folders", () => {
+test("hasActiveFilters: a search or checked categories (the folder is its own tab)", () => {
   expect(hasActiveFilters({ ...all })).toBe(false);
   expect(hasActiveFilters({ ...all, query: "  " })).toBe(false);
   expect(hasActiveFilters({ ...all, query: "milk" })).toBe(true);
-  expect(hasActiveFilters({ ...all, category: "idea" })).toBe(true);
-  expect(hasActiveFilters({ ...all, folders: ["Uni"] })).toBe(true);
+  expect(hasActiveFilters({ ...all, categories: ["idea"] })).toBe(true);
+  expect(hasActiveFilters({ ...all, folder: "Uni" })).toBe(false);
 });

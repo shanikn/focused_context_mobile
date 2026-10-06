@@ -1,15 +1,14 @@
 import { Note } from "../types/notes";
 import { normalizeCategory } from "./categoryColors";
-import { GENERAL } from "./folderOrder";
+import { ALL, GENERAL } from "./folderOrder";
 
-// Filters for the notes list: checked folders, category chip and search text.
-// They combine (a note must match all three) and keep the notes' order.
-
-export const ALL_CATEGORIES = "All";
+// Filters for the notes list: the folder tab, the checked categories and the
+// search text. They combine (a note must match all three) and keep the notes'
+// order.
 
 export interface NoteFilters {
-  folders: string[]; // the checked folders; none checked = every folder
-  category: string; // "All" or a category
+  folder: string; // "All" or a folder name
+  categories: string[]; // the checked categories; none checked = every category
   query: string;
 }
 
@@ -31,10 +30,10 @@ export function normalizeForSearch(text: string): string {
 export function filterNotes(notes: Note[], filters: NoteFilters): Note[] {
   const words = normalizeForSearch(filters.query).split(" ").filter(Boolean);
   return notes.filter((note) => {
-    if (filters.folders.length > 0 && !filters.folders.includes(note.list_name || GENERAL)) {
+    if (filters.folder !== ALL && (note.list_name || GENERAL) !== filters.folder) {
       return false;
     }
-    if (filters.category !== ALL_CATEGORIES && normalizeCategory(note.category) !== filters.category) {
+    if (filters.categories.length > 0 && !filters.categories.includes(normalizeCategory(note.category))) {
       return false;
     }
     if (words.length > 0) {
@@ -45,7 +44,7 @@ export function filterNotes(notes: Note[], filters: NoteFilters): Note[] {
   });
 }
 
-// A search, a category or checked folders are narrowing the list.
+// A search or checked categories are narrowing the list (the folder is its own tab).
 export function hasActiveFilters(filters: NoteFilters): boolean {
-  return filters.query.trim() !== "" || filters.category !== ALL_CATEGORIES || filters.folders.length > 0;
+  return filters.query.trim() !== "" || filters.categories.length > 0;
 }

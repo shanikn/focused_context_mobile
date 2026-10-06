@@ -13,7 +13,6 @@ import {
 } from "react-native";
 import { GENERAL } from "../lib/folderOrder";
 import { dragTargetIndex, moveItem } from "../lib/reorder";
-import { TextButton } from "./ui";
 import { MIN_TOUCH_TARGET, Theme, fonts, radius, spacing } from "../theme";
 import { useTheme, useThemedStyles } from "../ThemeContext";
 
@@ -75,24 +74,18 @@ function DragHandle({
   );
 }
 
-// The notes list's folder filter: every folder (empty ones too) with a
-// checkbox. Checking applies right away; none checked shows every note.
-// General stays first; the other folders can be dragged into any order.
-export default function FolderFilterSheet({
+// Editing the folders (from the notes list's folder tabs): every folder,
+// empty ones too. General stays first; the others can be dragged into any
+// order or deleted.
+export default function FolderEditSheet({
   visible,
   folders,
-  checked,
-  onToggle,
-  onClear,
   onDelete,
   onReorder,
   onClose,
 }: {
   visible: boolean;
   folders: string[]; // General first, then the user's order (lib/folderOrder.ts)
-  checked: string[];
-  onToggle: (name: string) => void;
-  onClear: () => void;
   onDelete: (name: string) => void; // asks first; General can't be deleted
   onReorder: (names: string[]) => void; // the folders after General, in their new order
   onClose: () => void;
@@ -131,7 +124,6 @@ export default function FolderFilterSheet({
   };
 
   const renderRow = (name: string) => {
-    const isChecked = checked.includes(name);
     const isDragged = drag?.name === name;
     return (
       <View
@@ -142,23 +134,12 @@ export default function FolderFilterSheet({
           isDragged && { transform: [{ translateY: drag!.dy - (target - drag!.from) * ROW_HEIGHT }] },
         ]}
       >
-        <TouchableOpacity
-          testID="folder-option"
-          style={styles.option}
-          onPress={() => onToggle(name)}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: isChecked }}
-          accessibilityLabel={name}
-        >
-          <Ionicons
-            name={isChecked ? "checkbox" : "square-outline"}
-            size={22}
-            color={isChecked ? colors.primary : colors.textMuted}
-          />
-          <Text style={[type.body, styles.name]} numberOfLines={1}>
+        <View style={styles.option}>
+          <Ionicons name={name === GENERAL ? "folder-outline" : "folder-open-outline"} size={22} color={colors.textMuted} />
+          <Text testID="folder-row" style={[type.body, styles.name]} numberOfLines={1}>
             {name}
           </Text>
-        </TouchableOpacity>
+        </View>
         {name !== GENERAL && (
           <>
             <TouchableOpacity
@@ -189,9 +170,9 @@ export default function FolderFilterSheet({
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close">
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.header}>
-            <Text style={[type.cardTitle, styles.title]}>Show folders</Text>
-            <TextButton label="Clear" onPress={onClear} disabled={checked.length === 0} />
+            <Text style={[type.cardTitle, styles.title]}>Edit folders</Text>
           </View>
+          <Text style={[type.caption, styles.hint]}>Drag ☰ to reorder. General stays first.</Text>
           <ScrollView style={styles.list} scrollEnabled={!drag}>
             {renderRow(GENERAL)}
             {shown.map(renderRow)}
@@ -218,6 +199,7 @@ const makeStyles = ({ colors }: Theme) =>
     },
     header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
     title: { flex: 1 },
+    hint: { marginBottom: 4 },
     list: { flexGrow: 0 },
     row: { flexDirection: "row", alignItems: "center", height: ROW_HEIGHT, backgroundColor: colors.surface },
     // the folder being dragged floats above the others
