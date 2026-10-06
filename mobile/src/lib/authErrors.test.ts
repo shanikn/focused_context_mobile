@@ -22,3 +22,19 @@ test("errors without a code, or not errors at all", () => {
   expect(authErrorMessage(null)).toBe("Couldn't sign in. Try again.");
   expect(authErrorMessage("auth/invalid-email")).toBe("Couldn't sign in. Try again.");
 });
+
+describe("password reset messages", () => {
+  const { resetErrorMessage } = require("./authErrors");
+  test.each([
+    ["auth/invalid-email", "That doesn't look like an email address."],
+    ["auth/missing-email", "That doesn't look like an email address."],
+    ["auth/network-request-failed", "No connection. Check your internet and try again."],
+    ["auth/anything-else", "Couldn't send the reset email. Try again later."],
+  ])("%s", (code, message) => {
+    expect(resetErrorMessage({ code })).toBe(message);
+  });
+
+  test("an unknown account isn't an error (don't reveal who has one)", () => {
+    expect(resetErrorMessage({ code: "auth/user-not-found" })).toBeNull();
+  });
+});

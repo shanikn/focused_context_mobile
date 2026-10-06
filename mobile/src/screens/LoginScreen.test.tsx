@@ -2,7 +2,7 @@ import React from "react";
 import { Alert, Text, TextInput, TouchableOpacity } from "react-native";
 import TestRenderer, { act, ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
 import LoginScreen from "./LoginScreen";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
 
 jest.mock("../config/firebase", () => ({ auth: {}, GOOGLE_WEB_CLIENT_ID: "test-client" }));
 jest.mock("firebase/auth", () => ({
@@ -10,6 +10,7 @@ jest.mock("firebase/auth", () => ({
   createUserWithEmailAndPassword: jest.fn(),
   GoogleAuthProvider: { credential: jest.fn() },
   signInWithCredential: jest.fn(),
+  sendPasswordResetEmail: jest.fn(),
 }));
 jest.mock("@react-native-google-signin/google-signin", () => ({
   GoogleSignin: { configure: jest.fn(), hasPlayServices: jest.fn(), signIn: jest.fn() },
@@ -106,4 +107,57 @@ test("the sample note is hidden from screen readers", async () => {
   const sample = tree.root.findByProps({ testID: "sample-note" });
   expect(sample.props.importantForAccessibility).toBe("no-hide-descendants");
   expect(sample.props.accessibilityElementsHidden).toBe(true);
+});
+
+describe("Forgot password?", () => {
+  const SENT = "If an account exists for this email, we sent a reset link.";
+  const typeEmail = async (tree: ReactTestRenderer, value: string) =>
+    act(async () => inputs(tree)[0].props.onChangeText(value));
+  const forgot = async (tree: ReactTestRenderer) => act(async () => byLabel(tree, "Forgot password?").props.onPress());
+
+  test("a link under the password field, only when signing in", async () => {
+    const tree = await renderScreen();
+    const text = allText(tree.root);
+    expect(text.indexOf("Password")).toBeLessThan(text.indexOf("Forgot password?"));
+    await act(async () => byLabel(tree, "New here? Create an account").props.onPress());
+    expect(allText(tree.root)).not.toContain("Forgot password?");
+  });
+
+  test("no email typed: asks for it, nothing sent", async () => {
+    const tree = await renderScreen();
+    await forgot(tree);
+    expect(sendPasswordResetEmail).not.toHaveBeenCalled();
+    expect(allText(tree.root)).toContain("Type your email above, then tap Forgot password? again.");
+  });
+
+  test("sends the reset email to the typed address and says so without revealing if it exists", async () => {
+    (sendPasswordResetEmail as jest.Mock).mockResolvedValue(undefined);
+    const tree = await renderScreen();
+    await typeEmail(tree, "  someone@example.com ");
+    await forgot(tree);
+    expect(sendPasswordResetEmail).toHaveBeenCalledWith({}, "someone@example.com");
+    expect(allText(tree.root)).toContain(SENT);
+  });
+
+  test("no account for that email: the same message", async () => {
+    (sendPasswordResetEmail as jest.Mock).mockRejectedValue({ code: "auth/user-not-found" });
+    const tree = await renderScreen();
+    await typeEmail(tree, "nobody@example.com");
+    await forgot(tree);
+    expect(allText(tree.root)).toContain(SENT);
+  });
+
+  test.each([
+    ["auth/invalid-email", "That doesn't look like an email address."],
+    ["auth/network-request-failed", "No connection. Check your internet and try again."],
+    ["auth/too-many-requests", "Couldn't send the reset email. Try again later."],
+  ])("%s: a friendly message", async (code, message) => {
+    (sendPasswordResetEmail as jest.Mock).mockRejectedValue({ code });
+    const tree = await renderScreen();
+    await typeEmail(tree, "someone@example");
+    await forgot(tree);
+    const text = allText(tree.root);
+    expect(text).toContain(message);
+    expect(text).not.toContain(SENT);
+  });
 });

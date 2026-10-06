@@ -17,3 +17,20 @@ export function authErrorMessage(error: unknown): string {
     error && typeof error === "object" && "code" in error ? (error as { code: unknown }).code : undefined;
   return (typeof code === "string" && MESSAGES[code]) || FALLBACK;
 }
+
+const RESET_MESSAGES: Record<string, string> = {
+  "auth/invalid-email": "That doesn't look like an email address.",
+  "auth/missing-email": "That doesn't look like an email address.",
+  "auth/network-request-failed": "No connection. Check your internet and try again.",
+};
+
+// For "Forgot password?". null means show the usual "if an account
+// exists..." message: whether an email has an account isn't revealed.
+export function resetErrorMessage(error: unknown): string | null {
+  const code =
+    error && typeof error === "object" && "code" in error ? (error as { code: unknown }).code : undefined;
+  if (code === "auth/user-not-found") {
+    return null;
+  }
+  return (typeof code === "string" && RESET_MESSAGES[code]) || "Couldn't send the reset email. Try again later.";
+}

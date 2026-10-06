@@ -18,6 +18,7 @@ import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithCredential,
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import {
   GoogleSignin,
@@ -25,13 +26,15 @@ import {
   isSuccessResponse,
   statusCodes,
 } from "@react-native-google-signin/google-signin";
-import { authErrorMessage } from "../lib/authErrors";
+import { authErrorMessage, resetErrorMessage } from "../lib/authErrors";
 import { colorFor, DEFAULT_CATEGORY_COLORS, textColorFor } from "../lib/categoryColors";
 import { Card, IconTile, PrimaryButton, TextButton } from "../components/ui";
 import { MIN_TOUCH_TARGET, Theme, fonts, radius, spacing } from "../theme";
 import { useTheme, useThemedStyles } from "../ThemeContext";
 
 GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID });
+
+const RESET_SENT = "If an account exists for this email, we sent a reset link.";
 
 const TASK_COLOR = colorFor("todo", DEFAULT_CATEGORY_COLORS);
 
@@ -72,6 +75,8 @@ export default function LoginScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // a non-error message, e.g. "we sent a reset link"
+  const [notice, setNotice] = useState<string | null>(null);
   const [focused, setFocused] = useState<"email" | "password" | null>(null);
   const passwordRef = useRef<TextInput>(null);
 
@@ -125,6 +130,32 @@ export default function LoginScreen() {
   const toggleMode = () => {
     setIsSignUp((current) => !current);
     setError(null);
+    setNotice(null);
+  };
+
+  // uses the email typed above; doesn't say whether it has an account
+  const handleForgotPassword = async () => {
+    const address = email.trim();
+    setError(null);
+    setNotice(null);
+    if (!address) {
+      setError("Type your email above, then tap Forgot password? again.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await sendPasswordResetEmail(auth, address);
+      setNotice(RESET_SENT);
+    } catch (e) {
+      const message = resetErrorMessage(e);
+      if (message) {
+        setError(message);
+      } else {
+        setNotice(RESET_SENT);
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -160,6 +191,7 @@ export default function LoginScreen() {
               onChangeText={(value) => {
                 setEmail(value);
                 setError(null);
+                setNotice(null);
               }}
               onFocus={() => setFocused("email")}
               onBlur={() => setFocused(null)}
@@ -188,6 +220,19 @@ export default function LoginScreen() {
               onSubmitEditing={handleSubmit}
               accessibilityLabel="Password"
             />
+
+            {!isSignUp && (
+              <View style={styles.forgotRow}>
+                <TextButton label="Forgot password?" onPress={handleForgotPassword} />
+              </View>
+            )}
+
+            {notice && (
+              <View style={styles.errorRow} accessibilityLiveRegion="polite">
+                <Ionicons name="mail-outline" size={16} color={colors.primaryDark} />
+                <Text style={styles.noticeText}>{notice}</Text>
+              </View>
+            )}
 
             {error && (
               <View style={styles.errorRow} accessibilityLiveRegion="polite">
@@ -264,6 +309,8 @@ const makeStyles = ({ colors, type }: Theme) =>
   },
   inputFocused: { borderColor: colors.primary },
   errorRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10 },
+  forgotRow: { alignItems: "flex-end", marginTop: -4 },
+  noticeText: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: colors.primaryDark },
   errorText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.danger },
   submit: { marginTop: 16, minHeight: MIN_TOUCH_TARGET },
   switchRow: { alignItems: "center" },
