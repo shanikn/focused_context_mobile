@@ -67,14 +67,12 @@ export async function updateNote(
     reminders_enabled?: boolean;
   }
 ): Promise<{ message: string }> {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(fields)) {
-    if (value !== undefined) {
-      params.append(key, String(value));
-    }
-  }
-  return apiRequest(`/notes/${noteId}?${params.toString()}`, {
+  // as a JSON body: the note text doesn't belong in the URL (servers and
+  // proxies log URLs). Undefined fields aren't sent; "" clears a field.
+  const body = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+  return apiRequest(`/notes/${noteId}`, {
     method: "PUT",
+    body: JSON.stringify(body),
   });
 }
 

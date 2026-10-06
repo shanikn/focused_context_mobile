@@ -6,8 +6,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from pydantic import BaseModel  # noqa: E402
-from fastapi import FastAPI, Header, HTTPException, Query  # noqa: E402
+import re  # noqa: E402
+from typing import Union  # noqa: E402
+from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr  # noqa: E402
+from fastapi import Body, FastAPI, Header, HTTPException, Query  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from notepad import (  # noqa: E402
     Note, get_all_notes, update_note, note_to_dict, save_note,
@@ -50,6 +52,27 @@ class NoteRequest(BaseModel):
     remind_at_hour: Optional[int] = None
     remind_at_minute: Optional[int] = None
     remind_on_date: Optional[str] = None
+
+
+class NoteUpdate(BaseModel):
+    """PUT /notes/{id} body: only the fields that change. "" or null clears
+    remind_at_hour, remind_at_minute, remind_on_date and location_value;
+    hour and minute may be numbers or numeric strings."""
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = None
+    list_name: str = None
+    category: str = None
+    category_explicit: bool = None
+    location_explicit: bool = None
+    location_value: Optional[str] = None
+    contexts: Union[str, list[str]] = None
+    remind_date_explicit: bool = None
+    remind_time_explicit: bool = None
+    remind_at_hour: Optional[Union[StrictInt, StrictStr]] = None
+    remind_at_minute: Optional[Union[StrictInt, StrictStr]] = None
+    remind_on_date: Optional[str] = None
+    reminders_enabled: bool = None
 
 
 app = FastAPI()
@@ -235,10 +258,57 @@ def remove_note(
     return {"message": "note deleted"}
 
 
-# update note fields
+def _whole_number(value, name: str, low: int, high: int) -> Optional[int]:
+    """None or "" clears; otherwise a whole number in [low, high], or 422."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise HTTPException(status_code=422, detail=f"{name} must be a whole number")
+    if isinstance(value, str):
+        if not re.fullmatch(r"-?\d+", value.strip()):
+            raise HTTPException(status_code=422, detail=f"{name} must be a whole number")
+        value = int(value.strip())
+    if not low <= value <= high:
+        raise HTTPException(status_code=422, detail=f"{name} must be between {low} and {high}")
+    return value
+
+
+# fields whose change re-runs the AI enrichment (category, place, time, date)
+_REENRICH_FIELDS = {
+    "content", "category", "category_explicit", "location_explicit", "location_value",
+    "remind_date_explicit", "remind_time_explicit", "remind_at_hour", "remind_at_minute", "remind_on_date",
+}
+
+
+def _note_fields(values: dict) -> dict:
+    """The MongoDB fields for the values sent (a JSON body or query
+    parameters; only the keys present). Raises 422 for a bad hour/minute."""
+    fields = {}
+    for key in ("content", "list_name", "category", "category_explicit", "location_explicit",
+                "remind_date_explicit", "remind_time_explicit", "reminders_enabled"):
+        if key in values:
+            fields[key] = values[key]
+    if "location_value" in values:
+        fields["location_value"] = values["location_value"] or None
+    if "contexts" in values:
+        raw = values["contexts"]
+        items = raw.split(",") if isinstance(raw, str) else (raw or [])
+        fields["contexts"] = [c.strip() for c in items if c and c.strip()]
+    if "remind_at_hour" in values:
+        fields["remind_at_hour"] = _whole_number(values["remind_at_hour"], "remind_at_hour", 0, 23)
+    if "remind_at_minute" in values:
+        fields["remind_at_minute"] = _whole_number(values["remind_at_minute"], "remind_at_minute", 0, 59)
+    if "remind_on_date" in values:
+        fields["remind_on_date"] = values["remind_on_date"] or None
+    return fields
+
+
+# update note fields: a JSON body (the app), or query parameters (older app
+# versions, which sent the note text in the URL)
 @app.put("/notes/{note_id}")
 def change_note(
     note_id: str,
+    body: Optional[NoteUpdate] = Body(None),
     content: Optional[str] = None,
     list_name: Optional[str] = None,
     category: Optional[str] = None,
@@ -256,51 +326,25 @@ def change_note(
 ):
     user_id = require_user_id(authorization)
     enforce_limit(NOTE_WRITE_LIMIT, user_id, "changes")
-    fields = {}
-    if content is not None:
-        fields["content"] = content
-    if list_name is not None:
-        fields["list_name"] = list_name
-    if category is not None:
-        fields["category"] = category
-    if category_explicit is not None:
-        fields["category_explicit"] = category_explicit
-    if location_explicit is not None:
-        fields["location_explicit"] = location_explicit
-    if location_value is not None:
-        fields["location_value"] = location_value if location_value else None
-    if contexts is not None:
-        fields["contexts"] = [c.strip() for c in contexts.split(",") if c.strip()]
-    if remind_date_explicit is not None:
-        fields["remind_date_explicit"] = remind_date_explicit
-    if remind_time_explicit is not None:
-        fields["remind_time_explicit"] = remind_time_explicit
-    if remind_at_hour is not None:
-        hour = int(remind_at_hour) if remind_at_hour else None
-        fields["remind_at_hour"] = hour
-    if remind_at_minute is not None:
-        minute = int(remind_at_minute) if remind_at_minute else None
-        fields["remind_at_minute"] = minute
-    if remind_on_date is not None:
-        fields["remind_on_date"] = remind_on_date if remind_on_date else None
-    if reminders_enabled is not None:
-        fields["reminders_enabled"] = reminders_enabled
+    if body is not None:
+        # only the fields sent; an explicit null counts (it clears)
+        values = body.model_dump(exclude_unset=True)
+    else:
+        query = {
+            "content": content, "list_name": list_name, "category": category,
+            "category_explicit": category_explicit, "location_explicit": location_explicit,
+            "location_value": location_value, "contexts": contexts,
+            "remind_date_explicit": remind_date_explicit, "remind_time_explicit": remind_time_explicit,
+            "remind_at_hour": remind_at_hour, "remind_at_minute": remind_at_minute,
+            "remind_on_date": remind_on_date, "reminders_enabled": reminders_enabled,
+        }
+        values = {k: v for k, v in query.items() if v is not None}
+    fields = _note_fields(values)
     matched = update_note(note_id, fields, user_id=user_id)
     if matched == 0:
         raise HTTPException(status_code=404, detail="Note not found")
     # re-categorize, re-infer context, and re-embed when content changes
-    if (
-        content is not None
-        or category is not None
-        or category_explicit is not None
-        or location_explicit is not None
-        or location_value is not None
-        or remind_date_explicit is not None
-        or remind_time_explicit is not None
-        or remind_at_hour is not None
-        or remind_at_minute is not None
-        or remind_on_date is not None
-    ):
+    if _REENRICH_FIELDS & values.keys():
         doc = get_note_by_id(note_id, user_id=user_id)
         if doc:
             note = dict_to_note(doc)
