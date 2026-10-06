@@ -1,12 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Location from "expo-location";
-import * as Notifications from "expo-notifications";
 import { signOut } from "firebase/auth";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { deleteAccount } from "../api/account";
 import { auth } from "../config/firebase";
-import { GEOFENCE_TASK } from "./geofence";
-import { clearReminderSchedule } from "./scheduledReminders";
+import { signOutCleanup } from "./signOutCleanup";
 
 async function quietly(step: () => Promise<unknown>): Promise<void> {
   try {
@@ -22,13 +19,10 @@ async function quietly(step: () => Promise<unknown>): Promise<void> {
 export async function deleteAccountAndSignOut(): Promise<void> {
   await deleteAccount();
   const usedGoogle = auth.currentUser?.providerData.some((p) => p.providerId === "google.com") ?? false;
-  await quietly(async () => {
-    if (await Location.hasStartedGeofencingAsync(GEOFENCE_TASK)) {
-      await Location.stopGeofencingAsync(GEOFENCE_TASK);
-    }
-  });
-  await quietly(clearReminderSchedule);
-  await quietly(() => Notifications.cancelAllScheduledNotificationsAsync());
+  // what every sign-out does (geofences, alarms and scheduled notifications,
+  // offline notes)...
+  await quietly(signOutCleanup);
+  // ...plus all app storage
   // place coordinates, preferences, caches, colors, the current place...
   await quietly(() => AsyncStorage.clear());
   await quietly(() => signOut(auth));

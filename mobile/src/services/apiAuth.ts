@@ -1,7 +1,7 @@
 import { signOut } from "firebase/auth";
 import { auth } from "../config/firebase";
 import { setAuthTokenProvider, setCurrentUserIdProvider, setOnAuthExpired } from "../api/client";
-import { clearReminderSchedule } from "./scheduledReminders";
+import { signOutCleanup } from "./signOutCleanup";
 
 // Connects the API client to Firebase: a fresh ID token for every request,
 // and sign-out when the backend still says 401 after a forced refresh.
@@ -13,7 +13,7 @@ export function connectApiToFirebase() {
   setCurrentUserIdProvider(() => auth.currentUser?.uid ?? null);
   setOnAuthExpired(() => {
     signOut(auth).catch(() => {});
-    // the next user mustn't get this user's alarms
-    clearReminderSchedule().catch(() => {});
+    // the same cleanup as Sign out: geofences, alarms, offline notes
+    signOutCleanup();
   });
 }

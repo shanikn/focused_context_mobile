@@ -24,11 +24,13 @@ import { getGrantedPermissions } from "./locationPermissions";
 import { checkAndNotifyReminders } from "./reminderNotifier";
 import { getStoreRegions, handleStoreGeofenceEvent } from "./storeAlerts";
 
-export const GEOFENCE_TASK = "focusedcontext-geofence";
+import {
+  GEOFENCE_REGIONS_KEY as REGISTERED_REGIONS_KEY,
+  GEOFENCE_REGISTERED_AT_KEY as REGISTERED_AT_KEY,
+  GEOFENCE_TASK,
+} from "./geofenceKeys";
 
-// when and which regions were last registered (see shouldNotifyArrival)
-const REGISTERED_AT_KEY = "focusedcontext.geofence.registeredAt";
-const REGISTERED_REGIONS_KEY = "focusedcontext.geofence.regions";
+export { GEOFENCE_TASK };
 
 async function getRegisteredAt(): Promise<number | null> {
   const raw = await AsyncStorage.getItem(REGISTERED_AT_KEY);

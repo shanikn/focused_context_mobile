@@ -53,7 +53,7 @@ import MapPickerModal from "../components/MapPickerModal";
 import PasteLocationModal from "../components/PasteLocationModal";
 import DeleteAccountModal from "../components/DeleteAccountModal";
 import { deleteAccountAndSignOut } from "../services/accountDeletion";
-import { clearOfflineData } from "../services/alertNotesCache";
+import { signOutCleanup } from "../services/signOutCleanup";
 import LocationWaysSheet, { LocationWay } from "../components/LocationWaysSheet";
 import { initialMapView, MapView } from "../lib/mapPick";
 import { LatLon } from "../lib/geo";
@@ -83,7 +83,7 @@ const APPEARANCE_ICONS: Record<AppearancePref, "phone-portrait-outline" | "sunny
 import { GrantedPermissions, locationStatus } from "../lib/locationPermissionFlow";
 import { getGrantedPermissions } from "../services/locationPermissions";
 import { syncGeofencing } from "../services/geofence";
-import { clearReminderSchedule, syncScheduledReminders } from "../services/scheduledReminders";
+import { syncScheduledReminders } from "../services/scheduledReminders";
 import {
   LocationPermissionModal,
   useLocationPermissionFlow,
@@ -392,9 +392,9 @@ export default function SettingsScreen() {
             (p) => p.providerId === "google.com"
           );
           await signOut(auth);
-          // the next user mustn't get this user's alarms or offline notes
-          clearReminderSchedule().catch(() => {});
-          await clearOfflineData().catch(() => {});
+          // the next person on this phone mustn't get this user's geofences,
+          // alarms or offline notes
+          await signOutCleanup();
           if (!usedGoogle) {
             return;
           }

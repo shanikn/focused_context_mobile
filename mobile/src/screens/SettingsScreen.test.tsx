@@ -75,6 +75,7 @@ jest.mock("../components/DeleteAccountModal", () => {
 });
 jest.mock("../services/accountDeletion", () => ({ deleteAccountAndSignOut: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../services/alertNotesCache", () => ({ clearOfflineData: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("../services/signOutCleanup", () => ({ signOutCleanup: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../components/PasteLocationModal", () => {
   const { View } = require("react-native");
   return (props: { visible: boolean; placeName: string; onSave: unknown }) =>
@@ -218,14 +219,14 @@ test("Sign out asks to confirm", async () => {
   expect(lastAlertButtons()).toEqual(["Cancel", "Sign Out"]);
 });
 
-test("signing out clears the notes kept on the phone for offline alerts", async () => {
-  const { clearOfflineData } = jest.requireMock("../services/alertNotesCache");
+test("signing out runs the shared cleanup (geofences, alarms, offline notes)", async () => {
+  const { signOutCleanup } = jest.requireMock("../services/signOutCleanup");
   const { signOut } = jest.requireMock("firebase/auth");
   const tree = await renderScreen();
   await act(async () => byLabel(tree, "Sign out").props.onPress());
   await pressAlertButton("Sign Out");
   expect(signOut).toHaveBeenCalled();
-  expect(clearOfflineData).toHaveBeenCalled();
+  expect(signOutCleanup).toHaveBeenCalled();
 });
 
 test("Appearance: System / Light / Dark, default System, saved on the phone", async () => {
