@@ -7,3 +7,4 @@ python-dotenv
 pytest
 flake8
 firebase-admin
+tzdata

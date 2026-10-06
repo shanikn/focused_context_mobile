@@ -1,4 +1,3 @@
-from datetime import datetime
 import chromadb
 import os
 import sys
@@ -9,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from notepad import dict_to_note, get_note_by_id, get_all_notes  # noqa: E402
+from agents.clock import local_now  # noqa: E402
 from agents.context import get_location_bucket  # noqa: E402
 from places import get_places  # noqa: E402
 from agents.ranking_policy import score, is_on_cooldown  # noqa: E402
@@ -64,7 +64,7 @@ def get_relevant_notes(
     query: str, location: str = "unknown", hour: Optional[int] = None,
     minute: Optional[int] = None, user_id: Optional[str] = None
 ):
-    now = datetime.now()
+    now = local_now()  # the users' local day and hour, not the server's UTC
     today_str = now.strftime("%Y-%m-%d")
     current_hour = hour if hour is not None else now.hour
     current_minute = minute if minute is not None else now.minute
@@ -142,7 +142,7 @@ def get_context_reminders(
     minute: Optional[int] = None, user_id: Optional[str] = None
 ):
     """Surface notes based purely on context match — no semantic search."""
-    now = datetime.now()
+    now = local_now()  # the users' local day and hour, not the server's UTC
     today_str = now.strftime("%Y-%m-%d")
     current_hour = hour if hour is not None else now.hour
     current_minute = minute if minute is not None else now.minute

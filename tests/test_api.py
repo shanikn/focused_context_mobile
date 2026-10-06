@@ -264,10 +264,8 @@ class _NoonToday(datetime):
 
 
 def test_reminders_report_reminder_time_source(monkeypatch):
-    import agents.pipeline
-    import agents.relevance
-    monkeypatch.setattr(agents.pipeline, "datetime", _NoonToday)
-    monkeypatch.setattr(agents.relevance, "datetime", _NoonToday)
+    import agents.clock
+    monkeypatch.setattr(agents.clock, "datetime", _NoonToday)
     # its own place, so only these notes can match it (results are capped at 3)
     place = client.post("/places/", json={"name": "Laundromat"}).json()
     timed = client.post("/notes/", json={"content": "laundromat at 17:54"}).json()["id"]

@@ -1,5 +1,6 @@
-from datetime import datetime
 from typing import Optional
+
+from agents.clock import local_now
 
 # context agent: figures out where and when the user is right now
 # location: one of the user's places (by id), or "unknown"
@@ -9,7 +10,7 @@ from typing import Optional
 
 def get_time_bucket(hour: Optional[int] = None):
     if hour is None:
-        hour = datetime.now().hour
+        hour = local_now().hour  # the users' local hour, not the server's UTC
     if 8 <= hour < 12:
         return "morning"
     elif 12 <= hour < 14:

@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timedelta
+from agents.clock import local_now
 from agents.ingestion import ingest_note
 from agents.categorizer import (
     categorize, infer_place, infer_time,
@@ -149,7 +150,8 @@ def compute_enrichment(note: Note, places: list, now: datetime) -> dict:
 
 
 def enrich_note(note: Note):
-    fields = compute_enrichment(note, get_places(note.user_id), datetime.now())
+    # the users' local date and time (agents/clock.py), not the server's UTC
+    fields = compute_enrichment(note, get_places(note.user_id), local_now())
     note.category = fields["category"]
     note.contexts = fields["contexts"]
     note.location_explicit = fields["location_explicit"]
