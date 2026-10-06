@@ -25,14 +25,23 @@ export async function updatePlace(
   });
 }
 
-// stores of a type around a position, nearest first (OpenStreetMap via the backend)
+// 3 decimals is about 100 m: plenty to find stores 2 km around
+const roundTo100m = (value: number) => String(Number(value.toFixed(3)));
+
+// stores of a type around a position, nearest first (OpenStreetMap via the
+// backend); the position is rounded on the phone before it's sent
 export async function nearbyStores(
   type: string,
   lat: number,
   lon: number,
   radiusM: number = 2000
 ): Promise<{ id: string; name: string; lat: number; lon: number }[]> {
-  const params = new URLSearchParams({ lat: String(lat), lon: String(lon), type, radius_m: String(radiusM) });
+  const params = new URLSearchParams({
+    lat: roundTo100m(lat),
+    lon: roundTo100m(lon),
+    type,
+    radius_m: String(radiusM),
+  });
   return apiRequest(`/places/nearby?${params.toString()}`);
 }
 

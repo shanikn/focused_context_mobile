@@ -22,9 +22,13 @@ const SCREENS: Record<Screen, { title: string; body: string; continueText: strin
   },
   disclosure: {
     title: "Background location",
+    // Google Play's prominent disclosure: what, why, and that it happens
+    // when the app is closed or not in use
     body:
-      "Smart Mind checks in the background whether you arrived at a saved place; " +
-      'only the place name is sent to the server. On the next screen, choose "Allow all the time".',
+      "Smart Mind collects location data to alert you when you arrive at your saved places or are near " +
+      "stores for your errands, even when the app is closed or not in use. Your places' coordinates stay " +
+      "on your phone. An approximate position is sent to the server only to find nearby stores and to " +
+      'rank address search results, and is not stored. On the next screen, choose "Allow all the time".',
     continueText: "Continue",
   },
 };
